@@ -1,7 +1,7 @@
 /**
  * Store applicable seulement : encapsule la préférence de thème
  * (light / dark / system), la persiste dans la table `settings` via le
- * backend (cdc.md §3.6) et réagit à un changement de thème système.
+ * backend (cahier des charges §3.6) et réagit à un changement de thème système.
  */
 
 import { get, writable } from 'svelte/store';

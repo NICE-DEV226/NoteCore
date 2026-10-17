@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Fenêtre de confirmation avant opération destructive
-   * (cdc.md §4.3 : « Confirmation avant suppression »).
+   * (cahier des charges §4.3 : « Confirmation avant suppression »).
    *
    * Accessibilité : à l'ouverture, le focus entre dans la boîte et se pose
    * sur l'action la plus sûre (« Annuler ») ; Tab / Maj+Tab restent piégés

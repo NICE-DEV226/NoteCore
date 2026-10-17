@@ -1,7 +1,7 @@
 /**
- * Rendu Markdown minimal et sûr pour l'aperçu de la V1 (cdc.md §3.4).
+ * Rendu Markdown minimal et sûr pour l'aperçu de la V1 (cahier des charges §3.4).
  *
- * Règle de sécurité (cdc.md §6.4, ARCHITECTURE.md §7) : tout le texte
+ * Règle de sécurité (cahier des charges §6.4, ARCHITECTURE.md §7) : tout le texte
  * d'entrée est d'abord échappé, puis balisé par ce module uniquement.
  * Aucun HTML inline n'est interprété et seuls les liens http(s)/mailto/
  * internes reçoivent un href. Les images distantes sont limitées à
@@ -34,7 +34,7 @@ function safeHref(url: string): string | null {
  * Une image n'est chargée que depuis http(s). On refuse `javascript:`,
  * `data:` (vecteur de SVG actif) et `file:` : l'aperçu ne doit jamais
  * exécuter ni lire autre chose que le réseau demandé explicitement
- * (cdc.md §6.4).
+ * (cahier des charges §6.4).
  */
 function safeImageSrc(url: string): string | null {
   const trimmed = url.trim();

@@ -1,4 +1,4 @@
-// Package transfer porte l'export et la sauvegarde (cdc.md §3.7,
+// Package transfer porte l'export et la sauvegarde (cahier des charges §3.7,
 // ADR-004). Doctrine : l'export reste lisible sans NoteCore ; tout
 // remplacement de fichier passe par un .tmp puis un renommage
 // atomique ; le manifeste du backup est un contrat versionné.
@@ -27,7 +27,7 @@ const FormatBackup = "notecore-backup"
 // AttachmentScheme préfixe les références de pièces jointes dans le
 // Markdown (`attachment:<id>`, ADR-006). À l'export, ces références sont
 // réécrites vers un chemin relatif afin que le Markdown reste lisible
-// sans NoteCore (cdc.md §3.7).
+// sans NoteCore (cahier des charges §3.7).
 const AttachmentScheme = "attachment:"
 
 var attachmentRefRe = regexp.MustCompile(`attachment:([A-Za-z0-9-]+)`)

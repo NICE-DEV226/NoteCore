@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Zone A — Barre latérale (cdc.md §4.2)
+   * Zone A — Barre latérale (cahier des charges §4.2)
    * Identité visuelle, création de note, accès aux vues (toutes /
    * favoris / récentes), dossiers avec suppression sans perte de notes
    * (§3.2), étiquettes (§3.2), paramètres.
@@ -570,7 +570,7 @@
     gap: 0.55rem;
   }
 
-  /* Export multi-notes et sauvegarde (cdc.md §3.7). */
+  /* Export multi-notes et sauvegarde (cahier des charges §3.7). */
   .transfer-row {
     display: flex;
     gap: 0.4rem;

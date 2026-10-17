@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
 
-  /** État d'écran vide compréhensible (cdc.md §4.3). */
+  /** État d'écran vide compréhensible (cahier des charges §4.3). */
   let {
     icon = 'notes',
     title,

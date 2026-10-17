@@ -138,7 +138,7 @@ func TestMigrationsIdempotentes(t *testing.T) {
 }
 
 // Suppression de dossier : les notes survivent et repassent à la racine
-// (cdc.md §3.2 : jamais de perte silencieuse).
+// (cahier des charges §3.2 : jamais de perte silencieuse).
 func TestSuppressionDossierConserveLesNotes(t *testing.T) {
 	svc := newService(t)
 	ctx := context.Background()
@@ -225,7 +225,7 @@ func TestRechercheImmediate(t *testing.T) {
 }
 
 // Les extraits de recherche sont construits backend et contiennent le
-// texte pertinent (cdc.md §3.3 : titre + extrait pertinent).
+// texte pertinent (cahier des charges §3.3 : titre + extrait pertinent).
 func TestExtraitRecherche(t *testing.T) {
 	svc := newService(t)
 	ctx := context.Background()
@@ -254,7 +254,7 @@ func TestExtraitRecherche(t *testing.T) {
 	}
 }
 
-// Le titre par défaut s'applique aux notes sans titre (cdc.md §3.1).
+// Le titre par défaut s'applique aux notes sans titre (cahier des charges §3.1).
 func TestTitreDefaut(t *testing.T) {
 	svc := newService(t)
 	ctx := context.Background()

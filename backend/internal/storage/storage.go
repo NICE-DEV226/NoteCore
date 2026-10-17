@@ -1,5 +1,5 @@
 // Package storage ouvre la base SQLite et applique les migrations.
-// Outre le cahier des charges (cdc.md §5.3, §7) et l'ADR-002, SQLite
+// Outre le cahier des charges (§5.3, §7) et l'ADR-002, SQLite
 // est l'unique source de vérité : contenu Markdown et métadonnées dans
 // la même base, dans des transactions courtes.
 package storage

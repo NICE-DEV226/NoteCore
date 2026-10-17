@@ -2,11 +2,11 @@
 
 ## Statut
 
-Accepté pour la V1, en extension du périmètre initial (cdc.md §10 les classait en évolutions futures ; décision explicite de l'utilisateur de les intégrer).
+Accepté pour la V1, en extension du périmètre initial (cahier des charges §10 les classait en évolutions futures ; décision explicite de l'utilisateur de les intégrer).
 
 ## Contexte
 
-Une note doit pouvoir référencer une image ou un fichier présent sur la machine, l'afficher dans l'aperçu et rester exportable en Markdown lisible hors de NoteCore (cdc.md §3.7, §6.5). Le CDC interdit de maintenir deux copies indépendantes d'une même donnée sans mécanisme de cohérence (§5.3) et impose que les sauvegardes restaurées ne perdent rien (§6.2) — y compris les pièces jointes.
+Une note doit pouvoir référencer une image ou un fichier présent sur la machine, l'afficher dans l'aperçu et rester exportable en Markdown lisible hors de NoteCore (cahier des charges §3.7, §6.5). Le CDC interdit de maintenir deux copies indépendantes d'une même donnée sans mécanisme de cohérence (§5.3) et impose que les sauvegardes restaurées ne perdent rien (§6.2) — y compris les pièces jointes.
 
 ## Décision
 

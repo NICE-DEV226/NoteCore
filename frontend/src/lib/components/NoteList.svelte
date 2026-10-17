@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Zone B — Liste des notes (cdc.md §4.2)
+   * Zone B — Liste des notes (cahier des charges §4.2)
    * Recherche (titre, contenu, étiquettes — §3.3), filtres, état vide,
    * extraits et dates de modification (§4.2).
    */

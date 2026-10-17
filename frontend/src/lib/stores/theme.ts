@@ -1,5 +1,5 @@
 /**
- * Préférence de thème, conservée après redémarrage (cdc.md §3.6).
+ * Préférence de thème, conservée après redémarrage (cahier des charges §3.6).
  *
  * La source de vérité est la table `settings` de SQLite, atteinte via le
  * backend (`getSettings` / `setSetting`, ARCHITECTURE.md §2). Le stockage

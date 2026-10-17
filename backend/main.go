@@ -1,4 +1,4 @@
-// main.go — point d'entrée NoteCore V1, phase 2 (cdc.md §5).
+// main.go — point d'entrée NoteCore V1, phase 2 (cahier des charges §5).
 // Monolithe modulaire : bindings Wails mince devant le service métier ;
 // SQLite est la source de vérité (ADR-002/005).
 package main
@@ -65,7 +65,7 @@ func run() error {
 		// Seuil d'éditabilité : en dessous de 900 px la mise en page
 		// replie l'éditeur (Workbench.svelte). Interdire cette zone
 		// garantit qu'une fenêtre atteignable reste toujours éditable
-		// (cdc.md §8, critère 11).
+		// (cahier des charges §8, critère 11).
 		MinWidth:  940,
 		MinHeight: 560,
 		Linux: &linux.Options{

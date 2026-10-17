@@ -9,7 +9,7 @@ import { derived, get, writable } from 'svelte/store';
 import { api } from '../api/client';
 import type { Folder, Note, NotePatch, SaveState, SearchHit, View } from '../api/types';
 
-/** Délai sans saisie avant écriture (cdc.md §3.5 : courte période). */
+/** Délai sans saisie avant écriture (cahier des charges §3.5 : courte période). */
 const AUTOSAVE_DELAY_MS = 800;
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ export const filteredNotes = derived(
     }
 
     // La recherche porte sur le titre, le contenu et les étiquettes
-    // via le moteur du backend (cdc.md §3.3). Une requête non vide
+    // via le moteur du backend (cahier des charges §3.3). Une requête non vide
     // interagit avec les hits connus ; si les hits ne sont pas encore
     // arrivés, on n'affiche pas de faux « aucun résultat ». Les extraits
     // renvoyés par le backend sont présentés dans la liste.
@@ -242,7 +242,7 @@ export async function createNote(folderId: string | null = null): Promise<void> 
 
 /**
  * Séquence la mise à jour de la note sélectionnée : mémoires locales
- * immédiates, écriture débordée ensuite (cdc.md §3.5).
+ * immédiates, écriture débordée ensuite (cahier des charges §3.5).
  */
 export function updateSelected(patch: NotePatch): void {
   const id = get(selectedNoteId);
@@ -314,7 +314,7 @@ export async function renameFolder(id: string, name: string): Promise<void> {
   }
 }
 
-/** Supprime un dossier sans toucher aux notes (cdc.md §3.2). */
+/** Supprime un dossier sans toucher aux notes (cahier des charges §3.2). */
 export async function deleteFolder(id: string): Promise<void> {
   try {
     const moved = await api.deleteFolder(id);
@@ -342,7 +342,7 @@ export function clearSearch(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Export / sauvegarde (cdc.md §3.7)
+// Export / sauvegarde (cahier des charges §3.7)
 // ---------------------------------------------------------------------------
 
 /** Message de résultat de transfert, affiché discrètement puis effacé. */

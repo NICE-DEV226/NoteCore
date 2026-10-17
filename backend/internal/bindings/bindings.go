@@ -114,7 +114,7 @@ func (n *NoteCore) RenameFolder(id, name string) error {
 }
 
 // DeleteFolder renvoie les notes déplacées à la racine — l'interface
-// les affiche sans perte silencieuse (cdc.md §3.2).
+// les affiche sans perte silencieuse (cahier des charges §3.2).
 func (n *NoteCore) DeleteFolder(id string) ([]notes.Note, error) {
 	if id == "" {
 		return nil, fmt.Errorf("dossier à supprimer non identifié")
@@ -122,7 +122,7 @@ func (n *NoteCore) DeleteFolder(id string) ([]notes.Note, error) {
 	return n.svc.DeleteFolder(n.callContext(), id)
 }
 
-// --- préférences (cdc.md §3.6) ---------------------------------------
+// --- préférences (cahier des charges §3.6) ---------------------------------------
 
 // GetSettings renvoie tous les réglages locaux (table `settings`).
 func (n *NoteCore) GetSettings() (map[string]string, error) {

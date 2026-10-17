@@ -2,7 +2,7 @@
   /**
    * Fenêtre principale : les trois zones du cahier des charges (§4.2).
    *   Zone A — barre latérale   Zone B — liste des notes   Zone C — éditeur
-   * Porte aussi les raccourcis clavier globaux (cdc.md §3.6) : créer,
+   * Porte aussi les raccourcis clavier globaux (cahier des charges §3.6) : créer,
    * rechercher et enregistrer une note.
    */
   import Sidebar from '../lib/components/Sidebar.svelte';
@@ -22,7 +22,7 @@
   }
 
   /**
-   * Raccourcis globaux (cdc.md §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
+   * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
    * jamais gêner la frappe : N (nouvelle note), K (rechercher), S
    * (enregistrer). Un raccourci sans modificateur reste réservé au texte.
    */

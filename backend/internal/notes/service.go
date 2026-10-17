@@ -1,5 +1,5 @@
 // Package notes porte le service métier des notes, dossiers et
-// étiquettes (cdc.md §3.1–3.3). Règle d'or : l'index FTS5 est maintenu
+// étiquettes (cahier des charges §3.1–3.3). Règle d'or : l'index FTS5 est maintenu
 // dans la MÊME transaction que la note — un index obsolète est une
 // donnée corrompue (ADR-003).
 package notes
@@ -132,7 +132,7 @@ func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult
 // --- écritures ------------------------------------------------------------
 
 // CreateNote crée une note. Une note sans titre explicite garde un
-// titre par défaut mais reste accessible (cdc.md §3.1).
+// titre par défaut mais reste accessible (cahier des charges §3.1).
 func (s *Service) CreateNote(ctx context.Context, title, folderID string) (Note, error) {
 	var folderPtr *string
 	if folder := strings.TrimSpace(folderID); folder != "" {
@@ -254,7 +254,7 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 }
 
 // DeleteNote supprime sans confirmation (la confirmation est une
-// responsabilité d'interface — cdc.md §3.1). La ligne FTS est
+// responsabilité d'interface — cahier des charges §3.1). La ligne FTS est
 // détachée avant la note, dans la même transaction.
 func (s *Service) DeleteNote(ctx context.Context, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -319,7 +319,7 @@ func (s *Service) RenameFolder(ctx context.Context, id, name string) error {
 	return nil
 }
 
-// DeleteFolder ne détruit jamais les notes (cdc.md §3.2) : le FK porte
+// DeleteFolder ne détruit jamais les notes (cahier des charges §3.2) : le FK porte
 // ON DELETE SET NULL, chaque note repasse à la racine. Renvoie la
 // liste des notes déplacées pour la réponse d'interface.
 func (s *Service) DeleteFolder(ctx context.Context, folderID string) ([]Note, error) {

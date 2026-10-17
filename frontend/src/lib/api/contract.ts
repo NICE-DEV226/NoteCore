@@ -18,7 +18,7 @@ export interface NoteCoreApi {
   createFolder(name: string): Promise<Folder>;
   renameFolder(id: string, name: string): Promise<Folder>;
   /**
-   * Supprime un dossier. Conformément au cdc.md §3.2, la suppression
+   * Supprime un dossier. Conformément au cahier des charges §3.2, la suppression
    * ne doit jamais entraîner la perte silencieuse des notes : elles
    * repassent à la racine (ON DELETE SET NULL côté SQLite).
    * Renvoie les notes déplacées.
@@ -28,7 +28,7 @@ export interface NoteCoreApi {
   /** Recherche full-text côté moteur (titre, contenu, étiquettes). */
   searchNotes(query: string): Promise<SearchHit[]>;
 
-  // --- export / sauvegarde (cdc.md §3.7) ---
+  // --- export / sauvegarde (cahier des charges §3.7) ---
 
   /**
    * Exporte une note en Markdown autonome. Le chemin de destination est
@@ -47,7 +47,7 @@ export interface NoteCoreApi {
   createBackup(): Promise<boolean>;
   restoreBackup(): Promise<boolean>;
 
-  // --- préférences (cdc.md §3.6) ---
+  // --- préférences (cahier des charges §3.6) ---
 
   /**
    * Tous les réglages locaux, lus dans la table `settings` de SQLite.

@@ -1,8 +1,8 @@
 /*
- * NoteCore — design system (cdc.md §3.6, §4.1).
+ * NoteCore — design system (cahier des charges §3.6, §4.1).
  *
  * Direction visuelle : « encre et papier », resserrée sur la référence de
- * design fournie (exemple.png) — des neutres purs (gris froids quasi sans
+ * design fournie — des neutres purs (gris froids quasi sans
  * teinte) du plus sombre au plus clair, un accent indigo d'encrier, et
  * quatre pastels de surligneur (bleu, vert, jaune, violet) qui colorent les
  * étiquettes. Le chrome de l'interface parle en sans ; les surfaces
@@ -38,7 +38,7 @@
   --success: oklch(0.52 0.13 150);
 
   /*
-   * Quatre pastels de surligneur — couleurs d'étiquettes (exemple.png).
+   * Quatre pastels de surligneur — couleurs d'étiquettes .
    * Les teintes sont communes aux deux thèmes : la puce est toujours un
    * aplat pastel avec une encre sombre lisible (contraste ≥ 9:1).
    */
@@ -113,7 +113,7 @@
 
   --mark-bg: oklch(0.90 0.12 95);
 
-  /* Cartes : liseré clair, fond net (référence exemple.png). */
+  /* Cartes : liseré clair, fond net . */
   --card-bg: oklch(1 0 0);
   --card-border: oklch(0.90 0.004 270);
 }

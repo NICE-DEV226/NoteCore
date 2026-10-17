@@ -1,6 +1,6 @@
 /**
  * Types de transport entre le frontend et le backend.
- * Ils reflètent le modèle de données du cahier des charges (cdc.md §7)
+ * Ils reflètent le modèle de données du cahier des charges (§7)
  * et la source de vérité SQLite (ADR-002).
  */
 
@@ -12,7 +12,7 @@ export interface Note {
   folderId: string | null;
   /**
    * État favori / épinglé. Le CDC emploie les deux termes pour la même
-   * notion (cdc.md §3.1 « un état favori ou épinglé ») : un seul champ
+   * notion (cahier des charges §3.1 « un état favori ou épinglé ») : un seul champ
    * `is_pinned` représente cette notion, affichée comme « favoris ».
    */
   isPinned: boolean;

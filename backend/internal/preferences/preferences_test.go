@@ -97,7 +97,7 @@ func TestRefuseEntreesInvalides(t *testing.T) {
 }
 
 // Le réglage survit à la fermeture puis réouverture de la base — c'est
-// l'exigence « conservée après redémarrage » (cdc.md §3.6).
+// l'exigence « conservée après redémarrage » (cahier des charges §3.6).
 func TestReglagePersisteApresReouverture(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "persist.db")
 	ctx := context.Background()

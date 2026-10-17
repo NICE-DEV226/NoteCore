@@ -1,5 +1,5 @@
 /**
- * Préférences d'affichage de l'éditeur (cdc.md §3.6 « Apparence ») :
+ * Préférences d'affichage de l'éditeur (cahier des charges §3.6 « Apparence ») :
  * police, taille du texte et largeur de colonne.
  *
  * Ce sont des réglages LOCAUX, conservés dans la table `settings` comme

@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Zone C — Éditeur (cdc.md §4.2)
+   * Zone C — Éditeur (cahier des charges §4.2)
    * Titre modifiable, éditeur Markdown, commandes de mise en forme
    * essentielles (§3.4), état de sauvegarde (§3.5), métadonnées
    * discrètes (dates §3.1, dossier §3.2, étiquettes).

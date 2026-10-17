@@ -1,5 +1,5 @@
 // Package preferences conserve les réglages locaux de l'utilisateur dans
-// la table `settings` de la base (cdc.md §3.6, ADR-002). Le réglage est
+// la table `settings` de la base (cahier des charges §3.6, ADR-002). Le réglage est
 // donc persisté avec les données qu'il accompagne : il survit au
 // redémarrage sans dépendre du stockage du moteur d'affichage.
 package preferences

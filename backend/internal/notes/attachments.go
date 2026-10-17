@@ -1,6 +1,6 @@
 // Pièces jointes locales (ADR-006) : images et fichiers rattachés à une
 // note. Les octets vivent dans SQLite — une seule copie, sauvegardée et
-// restaurée avec le reste (cdc.md §5.3, §6.2). Une pièce jointe
+// restaurée avec le reste (cahier des charges §5.3, §6.2). Une pièce jointe
 // appartient à une seule note et disparaît avec elle (ON DELETE CASCADE).
 package notes
 

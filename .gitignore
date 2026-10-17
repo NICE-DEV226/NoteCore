@@ -37,3 +37,10 @@ Thumbs.db
 # Outils d'agent (installation locale, pas de NoteCore)
 .agents/
 skills-lock.json
+
+# Documents et ressources locales, non publiés
+/cdc.md
+/.vscode/
+/logos.jpeg
+/exemple.png
+/logo.svg

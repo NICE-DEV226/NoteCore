@@ -49,7 +49,7 @@ export interface SnippetPart {
 }
 
 /**
- * Découpe l'extrait renvoyé par le moteur de recherche (cdc.md §3.3,
+ * Découpe l'extrait renvoyé par le moteur de recherche (cahier des charges §3.3,
  * ADR-003). Le backend encadre déjà les termes trouvés de guillemets
  * français « » ; on en fait des fragments surlignables, sans jamais
  * interpréter le contenu comme du HTML.
@@ -71,7 +71,7 @@ export function snippetParts(raw: string, max = 160): SnippetPart[] {
   return parts;
 }
 
-/** Extrait de texte brut pour la liste des notes (Zone B, cdc.md §4.2). */
+/** Extrait de texte brut pour la liste des notes (Zone B, cahier des charges §4.2). */
 export function excerpt(content: string, max = 90): string {
   const flat = content
     .replace(/```[\s\S]*?```/g, ' [code] ')
