@@ -5,8 +5,12 @@ frontend/node_modules/
 # Artefacts de build
 frontend/dist/
 backend/frontenddist/
-backend/build/
 frontend/.svelte-kit/
+# Sorties de compilation uniquement : build/windows/icon.ico et
+# build/appicon.png sont des sources, suivies par git.
+backend/build/bin/
+backend/build/*.exe
+backend/build/*.dll
 
 # Bases de données locales (données utilisateur)
 *.db

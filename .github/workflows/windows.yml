@@ -1,0 +1,94 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Exécutable Windows x64
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      # La cible Windows n'utilise pas de cgo : ni WebKitGTK ni chaîne de
+      # compilation croisée ne sont nécessaires, le WebView2Loader étant
+      # en Go pur. La compilation depuis Linux produit un binaire
+      # identique à une compilation native.
+      CGO_ENABLED: "0"
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances du frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Installer Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Installer la CLI Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      # Le bundle frontend est intégré à l'exécutable par go:embed :
+      # le fichier produit est autonome, sans dossier à côté de lui.
+      - name: Compiler l'application Windows
+        working-directory: backend
+        run: $(go env GOPATH)/bin/wails build -platform windows/amd64 -clean
+
+      - name: Vérifier l'exécutable
+        run: |
+          test -f backend/build/bin/notecore.exe
+          file backend/build/bin/notecore.exe
+          ls -lh backend/build/bin/notecore.exe
+
+      - name: Publier l'exécutable en artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notecore-windows-x64
+          path: backend/build/bin/notecore.exe
+          if-no-files-found: error
+
+  release:
+    name: Join au release (étiquette v*)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Récupérer l'exécutable
+        uses: actions/download-artifact@v4
+        with:
+          name: notecore-windows-x64
+          path: dist
+
+      - name: Créer ou compléter le release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mv dist/notecore.exe "dist/notecore-${TAG}-windows-x64.exe"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.exe --clobber
+          else
+            gh release create "$TAG" dist/*.exe \
+              --title "NoteCore $TAG" \
+              --generate-notes
+          fi

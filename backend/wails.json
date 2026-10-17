@@ -4,7 +4,7 @@
   "outputfilename": "notecore",
   "frontend:install": "",
   "frontend:build": "npm run build:wails",
-  "frontend:dev:watcher": "",
+  "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "frontend:dir": "../frontend",
   "info": {
