@@ -98,6 +98,19 @@ jobs:
       - name: Récupérer le code
         uses: actions/checkout@v7
 
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Wails déclenche lui-même « npm run build:wails » : vite doit
+      # donc être installé avant la compilation.
+      - name: Installer les dépendances du frontend
+        working-directory: frontend
+        run: npm ci
+
       - name: Installer les bibliothèques de compilation
         run: |
           sudo apt-get update
