@@ -154,6 +154,8 @@ Pour l'application complète avec rechargement, voir `docs/procedure-build.md`.
 
 L'intégration continue rejoue ces contrôles, puis compile l'application complète avec Wails, à chaque push et pull request sur `main`. Voir `.github/workflows/ci.yml`.
 
+Un second workflow, `.github/workflows/windows.yml`, construit l'exécutable Windows : il le publie en artefact à chaque push, et l'attache à un release GitHub lorsqu'une étiquette `v*` est poussée.
+
 ## Vos données
 
 Base locale SQLite, en mode WAL :
