@@ -83,12 +83,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+        # Ce job ne copie pas le dépôt : sans copie de travail, gh ne peut pas
+        # déduire sur quel dépôt agir et --repo doit le nommer explicitement.
         run: |
           mv dist/notecore.exe "dist/notecore-${TAG}-windows-x64.exe"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.exe --clobber
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.exe \
+              --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$TAG" dist/*.exe \
+              --repo "$GITHUB_REPOSITORY" \
               --title "NoteCore $TAG" \
               --generate-notes
           fi
