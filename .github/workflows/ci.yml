@@ -12,10 +12,14 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# La version d'Ubuntu est figée volontairement : le job « application »
+# compile contre la WebKitGTK du système, dont le nom de paquet change
+# d'une distribution à l'autre, alors que « ubuntu-latest » bascule de
+# version sans modification du dépôt.
 jobs:
   backend:
     name: Backend Go
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
@@ -66,7 +70,7 @@ jobs:
 
   frontend:
     name: Frontend Svelte
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
@@ -92,7 +96,7 @@ jobs:
 
   application:
     name: Application (Wails)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [backend, frontend]
     steps:
       - name: Récupérer le code
