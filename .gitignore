@@ -1,0 +1,39 @@
+# Dépendances
+node_modules/
+frontend/node_modules/
+
+# Artefacts de build
+frontend/dist/
+backend/frontenddist/
+backend/build/
+frontend/.svelte-kit/
+
+# Bases de données locales (données utilisateur)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Compilés Go
+*.exe
+*.test
+*.out
+
+# Journaux et sorties
+*.log
+npm-debug.log*
+
+# Environnement local
+.env
+.env.*
+!.env.example
+
+# Éditeur / système
+.DS_Store
+Thumbs.db
+*.swp
+
+# Outils d'agent (installation locale, pas de NoteCore)
+.agents/
+skills-lock.json

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NoteCore
+Comment=Prise de notes hors ligne
+Exec=notecore
+Icon=notecore
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=notecore

@@ -1,0 +1,206 @@
+/*
+ * NoteCore — design system (cdc.md §3.6, §4.1).
+ *
+ * Direction visuelle : « encre et papier », resserrée sur la référence de
+ * design fournie (exemple.png) — des neutres purs (gris froids quasi sans
+ * teinte) du plus sombre au plus clair, un accent indigo d'encrier, et
+ * quatre pastels de surligneur (bleu, vert, jaune, violet) qui colorent les
+ * étiquettes. Le chrome de l'interface parle en sans ; les surfaces
+ * d'écriture (titre, corps, aperçu) parlent en serif — fontes système
+ * uniquement, l'application est hors ligne.
+ * Deux thèmes via <html data-theme="…">, appliqués avant le premier rendu.
+ */
+
+:root {
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: Georgia, 'Iowan Old Style', Charter, Cambria, 'Source Serif 4', 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /*
+   * Préférences d'affichage de l'éditeur (§3.6). Valeurs par défaut ici ;
+   * le store `lib/stores/display.ts` les remplace sur <html> selon le
+   * choix de l'utilisateur (réglage local, table `settings`).
+   */
+  --editor-font: var(--font-serif);
+  --editor-font-size: 1rem;
+  --editor-width: 44rem;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 1px 2px oklch(0.09 0 0 / 0.08);
+  --shadow-lg: 0 18px 44px oklch(0.09 0 0 / 0.30);
+
+  --danger: oklch(0.55 0.19 25);
+  --danger-strong: oklch(0.49 0.20 25);
+  --warning: oklch(0.66 0.14 75);
+  --success: oklch(0.52 0.13 150);
+
+  /*
+   * Quatre pastels de surligneur — couleurs d'étiquettes (exemple.png).
+   * Les teintes sont communes aux deux thèmes : la puce est toujours un
+   * aplat pastel avec une encre sombre lisible (contraste ≥ 9:1).
+   */
+  --tint-blue: oklch(0.900 0.014 248);
+  --tint-green: oklch(0.920 0.030 133);
+  --tint-yellow: oklch(0.965 0.060 99);
+  --tint-purple: oklch(0.911 0.036 306);
+
+  --tint-blue-ink: oklch(0.30 0.03 248);
+  --tint-green-ink: oklch(0.33 0.045 137);
+  --tint-yellow-ink: oklch(0.33 0.055 95);
+  --tint-purple-ink: oklch(0.30 0.065 302);
+
+  --tint-blue-line: oklch(0.80 0.03 248);
+  --tint-green-line: oklch(0.82 0.05 133);
+  --tint-yellow-line: oklch(0.88 0.08 99);
+  --tint-purple-line: oklch(0.82 0.05 306);
+}
+
+/*
+ * Les quatre teintes d'étiquette, exposées en classes utilitaires : un
+ * élément étiqueté `tint-blue` reçoit `--tint-bg` / `--tint-ink` / `--tint-line`.
+ */
+.tint-blue {
+  --tint-bg: var(--tint-blue);
+  --tint-ink: var(--tint-blue-ink);
+  --tint-line: var(--tint-blue-line);
+}
+.tint-green {
+  --tint-bg: var(--tint-green);
+  --tint-ink: var(--tint-green-ink);
+  --tint-line: var(--tint-green-line);
+}
+.tint-yellow {
+  --tint-bg: var(--tint-yellow);
+  --tint-ink: var(--tint-yellow-ink);
+  --tint-line: var(--tint-yellow-line);
+}
+.tint-purple {
+  --tint-bg: var(--tint-purple);
+  --tint-ink: var(--tint-purple-ink);
+  --tint-line: var(--tint-purple-line);
+}
+
+/* Thème clair — le jour : papier froid, encre franche. */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --app-bg: oklch(0.975 0.002 270);
+  --surface: oklch(1 0 0);
+  --surface-elevated: oklch(0.995 0.001 270);
+  --sidebar-bg: oklch(0.958 0.003 270);
+  --hover: oklch(0.945 0.004 270);
+  --input-bg: oklch(0.965 0.003 270);
+  --chip-bg: oklch(0.955 0.004 270);
+
+  --border: oklch(0.905 0.004 270);
+  --text: oklch(0.25 0.008 270);
+  --text-soft: oklch(0.47 0.008 270);
+  --text-faint: oklch(0.52 0.008 270);
+
+  --accent: oklch(0.52 0.20 269);
+  --accent-strong: oklch(0.46 0.20 269);
+  --accent-text: oklch(0.50 0.19 269);
+  --on-accent: oklch(0.99 0 0);
+
+  --accent-soft: oklch(0.93 0.035 269);
+  --code-bg: oklch(0.945 0.004 270);
+
+  --danger-soft: oklch(0.93 0.04 25);
+  --on-danger: oklch(0.99 0 0);
+
+  --mark-bg: oklch(0.90 0.12 95);
+
+  /* Cartes : liseré clair, fond net (référence exemple.png). */
+  --card-bg: oklch(1 0 0);
+  --card-border: oklch(0.90 0.004 270);
+}
+
+/* Thème sombre — le soir : cartouche d'encre, traits repassés au clair. */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Hiérarchie reprise de la référence : le contenu est le plus sombre,
+     la liste remonte d'un cran, la barre latérale est la plus claire. */
+  --app-bg: oklch(0.247 0.006 258);
+  --surface: oklch(0.281 0.006 271);
+  --surface-elevated: oklch(0.31 0.006 271);
+  --sidebar-bg: oklch(0.309 0 90);
+  --hover: oklch(0.345 0.006 271);
+  --input-bg: oklch(0.265 0.006 271);
+  --chip-bg: oklch(0.345 0.006 271);
+
+  --border: oklch(0.40 0.006 271);
+  --text: oklch(0.94 0.002 271);
+  --text-soft: oklch(0.76 0.006 258);
+  --text-faint: oklch(0.68 0.008 258);
+
+  --accent: oklch(0.55 0.20 269);
+  --accent-strong: oklch(0.50 0.20 269);
+  --accent-text: oklch(0.78 0.13 269);
+  --on-accent: oklch(0.99 0 0);
+
+  --accent-soft: oklch(0.34 0.06 269);
+  --code-bg: oklch(0.22 0.006 271);
+
+  --danger: oklch(0.72 0.18 25);
+  --danger-strong: oklch(0.66 0.18 25);
+  --danger-soft: oklch(0.33 0.08 25);
+  --on-danger: oklch(0.26 0.07 25);
+  --warning: oklch(0.80 0.13 80);
+  --success: oklch(0.72 0.15 150);
+
+  --mark-bg: oklch(0.52 0.11 95);
+
+  --card-bg: oklch(0.30 0.006 271);
+  --card-border: oklch(0.36 0.006 271);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  background: var(--app-bg);
+  color: var(--text);
+  font-size: 15px;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Le curseur de texte sélectionne comme on surligne au marqueur. */
+::selection {
+  background: var(--mark-bg);
+  color: inherit;
+}
+
+/* Focus clavier visible partout (qualification CDC §8.11). */
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
+/* Respect de la préférence d'accessibilité mouvement réduit. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

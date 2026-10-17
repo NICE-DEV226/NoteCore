@@ -1,0 +1,16 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "NoteCore",
+  "outputfilename": "notecore",
+  "frontend:install": "",
+  "frontend:build": "npm run build:wails",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "auto",
+  "frontend:dir": "../frontend",
+  "info": {
+    "productName": "NoteCore",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © 2026 NoteCore",
+    "comments": "Prise de notes structurée, hors ligne, pour étudiants et développeurs."
+  }
+}
