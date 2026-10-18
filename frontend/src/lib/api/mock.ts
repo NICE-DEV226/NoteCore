@@ -331,6 +331,12 @@ export const mockApi: NoteCoreApi = {
     throw new Error("L'export est disponible dans l'application native.");
   },
 
+  async startupReport() {
+    // Mock en mémoire : aucun schéma n'est migré, donc aucune copie.
+    await delay();
+    return '';
+  },
+
   async exportAllNotes() {
     await delay();
     throw new Error("L'export est disponible dans l'application native.");

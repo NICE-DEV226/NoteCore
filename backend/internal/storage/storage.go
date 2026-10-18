@@ -7,6 +7,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -14,34 +15,63 @@ import (
 	_ "modernc.org/sqlite" // driver SQLite en Go pur : pas de cgo (ADR-005)
 )
 
-// Connexion unique et bornée : un écrivain littéral, la concurrence
-// applicative sérialisée par Go. Le pool ne s'élargit pas à l'occasion.
+// Open ouvre la base et applique les migrations (chemin court, sans
+// rapport — les tests et les outils l'utilisent ; l'application passe
+// par OpenWithReport).
 func Open(path string) (*sql.DB, error) {
+	db, _, err := OpenWithReport(path)
+	return db, err
+}
+
+// MigrationReport décrit ce qui s'est passé à l'ouverture d'une base
+// existante. Une installation plus récente doit conserver les données de
+// la précédente : lorsqu'une migration est sur le point de modifier le
+// schéma, une copie de sécurité de la base est écrite à côté d'elle et
+// son chemin est annoncé (§11, critère 12 — rien n'est perdu à
+// l'upgrade). `SafetyCopy` est vide quand aucune migration n'était
+// requise (installation neuve, ou déjà à jour).
+type MigrationReport struct {
+	// Chemin de la copie écrite avant migration, ou "" si rien n'a bougé.
+	SafetyCopy string
+	// Versions de migration effectivement appliquées à cette ouverture.
+	Applied []int
+}
+
+// OpenWithReport ouvre la base, applique les migrations et renvoie ce
+// qu'il s'est passé. C'est l'entrée utilisée par l'application.
+func OpenWithReport(path string) (*sql.DB, MigrationReport, error) {
 	if path == "" {
-		return nil, fmt.Errorf("chemin de base vide")
+		return nil, MigrationReport{}, fmt.Errorf("chemin de base vide")
 	}
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return nil, fmt.Errorf("répertoire de la base : %w", err)
+			return nil, MigrationReport{}, fmt.Errorf("répertoire de la base : %w", err)
 		}
 	}
 
-	// PRAGMA posés à l'ouverture, pas de valeurs implicites.
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
+	// Une installation neuve n'a rien à conserver : le fichier n'existait
+	// pas encore. Seule une base déjà présente chez l'utilisateur — donc
+	// celle de la version précédente — mérite une copie avant migration.
+	preexisting := true
+	if _, err := os.Stat(path); err != nil {
+		preexisting = false
+	}
 
+	// PRAGMA posés à l'ouverture, pas de valeurs implicites. Connexion
+	// unique et bornée : le pool ne s'élargit pas à l'occasion.
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("ouverture : %w", err)
+		return nil, MigrationReport{}, fmt.Errorf("ouverture : %w", err)
 	}
-	// Pool étroit (1 connexion) : la BD est invoquée par des transactions
-	// courtes ; la durée des opérations est bornée, pas le parallelisme.
 	db.SetMaxOpenConns(1)
 
-	if err := Migrate(db); err != nil {
+	report, err := migrate(db, path, preexisting)
+	if err != nil {
 		db.Close()
-		return nil, err
+		return nil, report, err
 	}
-	return db, nil
+	return db, report, nil
 }
 
 // migration est une version numérotée du schéma. Toute migration
@@ -135,11 +165,29 @@ func SchemaVersion(db *sql.DB) (int, error) {
 	return v, nil
 }
 
-// Migrate applique toutes les migrations manquantes, en ordre
-// croissant, chacune dans sa propre transaction : si une étape
-// échoue, rien n'est partiellement appliqué ; l'état courant reste
-// sain et reprenable (durabilité avant tout).
+// Migrate applique toutes les migrations manquantes, sans copie de
+// sécurité (chemin court, utilisé par les tests et par les outils qui
+// n'ont pas de fichier sous la main). L'application passe par
+// OpenWithReport, qui conserve la base d'avant migration.
 func Migrate(db *sql.DB) error {
+	_, err := migrate(db, "", false)
+	return err
+}
+
+// migrate applique toutes les migrations manquantes, en ordre
+// croissant, chacune dans sa propre transaction : si une étape échoue,
+// rien n'est partiellement appliqué ; l'état courant reste sain et
+// reprenable (durabilité avant tout).
+//
+// Quand une migration est nécessaire et que la base était déjà présente
+// chez l'utilisateur (`preexisting` — une installation neuve n'a rien à
+// conserver), une copie est écrite AVANT la moindre écriture : une
+// version plus récente de NoteCore ouvre donc toujours les données de la
+// précédente sans les détruire, et un échec de migration reste
+// rattrapable (§11, critère 12).
+func migrate(db *sql.DB, path string, preexisting bool) (MigrationReport, error) {
+	report := MigrationReport{}
+
 	// Amorce idempotente : le registre de versions existe toujours avant
 	// d'être interrogé. La version est posée dans la même transaction que
 	// le schéma correspondant : crash au milieu = transaction annulée,
@@ -147,14 +195,34 @@ func Migrate(db *sql.DB) error {
 	if _, err := db.Exec(
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`,
 	); err != nil {
-		return fmt.Errorf("registre des migrations : %w", err)
+		return report, fmt.Errorf("registre des migrations : %w", err)
 	}
 
 	var current int
 	if err := db.QueryRow(
 		`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`,
 	).Scan(&current); err != nil {
-		return fmt.Errorf("lecture des versions : %w", err)
+		return report, fmt.Errorf("lecture des versions : %w", err)
+	}
+
+	pending := 0
+	for _, m := range migrations {
+		if m.version > current {
+			pending++
+		}
+	}
+	if pending == 0 {
+		return report, nil // base déjà à jour : rien n'est touché
+	}
+
+	if path != "" && preexisting {
+		// Une copie impossible n'empêche pas la migration : elle est
+		// signalée, jamais silencieuse, et l'ouverture continue.
+		if copy, err := preMigrationCopy(db, path); err != nil {
+			log.Printf("stockage : copie avant migration impossible : %v", err)
+		} else {
+			report.SafetyCopy = copy
+		}
 	}
 
 	for _, m := range migrations {
@@ -163,11 +231,11 @@ func Migrate(db *sql.DB) error {
 		}
 		tx, err := db.Begin()
 		if err != nil {
-			return fmt.Errorf("migration %d : début : %w", m.version, err)
+			return report, fmt.Errorf("migration %d : début : %w", m.version, err)
 		}
 		if _, err := tx.Exec(m.sql); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("migration %d : %w", m.version, err)
+			return report, fmt.Errorf("migration %d : %w", m.version, err)
 		}
 		// La version est posée dans la MÊME transaction que le schéma :
 		// crash au milieu = transaction annulée, schéma inchangé.
@@ -176,11 +244,39 @@ func Migrate(db *sql.DB) error {
 			m.version, time.Now().UTC().Format(time.RFC3339),
 		); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("migration %d : version : %w", m.version, err)
+			return report, fmt.Errorf("migration %d : version : %w", m.version, err)
 		}
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("migration %d : commit : %w", m.version, err)
+			return report, fmt.Errorf("migration %d : commit : %w", m.version, err)
 		}
+		report.Applied = append(report.Applied, m.version)
 	}
-	return nil
+	return report, nil
+}
+
+// preMigrationCopy écrit une copie cohérente de la base à côté d'elle
+// (même mécanisme que la sauvegarde : VACUUM INTO), en 0600, avec un nom
+// daté qui indique d'où elle vient. VACUUM INTO refuse de réécrire un
+// fichier existant : on cherche un nom libre plutôt que d'écraser quoi
+// que ce soit de l'utilisateur.
+func preMigrationCopy(db *sql.DB, path string) (string, error) {
+	now := time.Now().UTC()
+	for i := 0; i < 10; i++ {
+		suffix := now.Format("20060102-150405")
+		if i > 0 {
+			suffix = fmt.Sprintf("%s-%d", suffix, i)
+		}
+		dest := fmt.Sprintf("%s.avant-migration-%s", path, suffix)
+		if _, err := os.Stat(dest); err == nil {
+			continue // nom déjà pris : on tente le suivant
+		}
+		if _, err := db.Exec(`VACUUM INTO ?`, dest); err != nil {
+			return "", fmt.Errorf("copie avant migration : %w", err)
+		}
+		if err := os.Chmod(dest, 0o600); err != nil {
+			return "", fmt.Errorf("permissions de la copie : %w", err)
+		}
+		return dest, nil
+	}
+	return "", fmt.Errorf("copie avant migration : aucun nom disponible")
 }

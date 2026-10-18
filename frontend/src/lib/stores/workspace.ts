@@ -254,10 +254,23 @@ export async function flushSave(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function initWorkspace(): Promise<void> {
-  const [loadedNotes, loadedFolders] = await Promise.all([api.listNotes(), api.listFolders()]);
+  const [loadedNotes, loadedFolders, safetyCopy] = await Promise.all([
+    api.listNotes(),
+    api.listFolders(),
+    // Une migration de schéma a pu conserver la base précédente : elle
+    // est annoncée, jamais laissée sur le disque sans le dire (§11).
+    api.startupReport()
+  ]);
   notes.set(loadedNotes ?? []);
   folders.set(loadedFolders ?? []);
   loaded.set(true);
+
+  if (safetyCopy) {
+    notifyTransfer(
+      'info',
+      `Mise à jour appliquée. Vos données précédentes sont conservées dans ${safetyCopy}.`
+    );
+  }
 
   if (workspaceListenersReady) return;
   workspaceListenersReady = true;

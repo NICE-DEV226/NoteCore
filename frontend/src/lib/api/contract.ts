@@ -36,6 +36,15 @@ export interface NoteCoreApi {
   /** Recherche full-text côté moteur (titre, contenu, étiquettes). */
   searchNotes(query: string): Promise<SearchHit[]>;
 
+  // --- ouverture / upgrade (cahier des charges §11, critère 12) ---
+
+  /**
+   * Copie de la base conservée avant une migration de schéma appliquée à
+   * ce lancement. Chaîne vide : rien n'a bougé, les données sont
+   * directement celles de la version précédente.
+   */
+  startupReport(): Promise<string>;
+
   // --- export / sauvegarde (cahier des charges §3.7) ---
 
   /**

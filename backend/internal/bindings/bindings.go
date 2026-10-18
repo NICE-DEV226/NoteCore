@@ -23,6 +23,9 @@ type NoteCore struct {
 	prefs *preferences.Store
 	db    *sql.DB
 	ctx   context.Context
+	// Copie de la base conservée avant une migration de schéma : annoncée
+	// à l'interface, jamais un fichier silencieux sur le disque.
+	startupReport string
 }
 
 func New(svc *notes.Service, db *sql.DB) *NoteCore {
@@ -38,6 +41,19 @@ func (n *NoteCore) Startup(ctx context.Context) {
 		panic("startup sans contexte")
 	}
 	n.ctx = ctx
+}
+
+// SetStartupReport conserve le chemin de la copie de la base écrite avant
+// une migration de schéma, pour que l'application puisse l'annoncer.
+func (n *NoteCore) SetStartupReport(safetyCopy string) {
+	n.startupReport = safetyCopy
+}
+
+// StartupReport renvoie le chemin de la base conservée avant la migration
+// appliquée à ce lancement. Chaîne vide : rien n'a bougé, les données de
+// la version précédente sont directement celles en service.
+func (n *NoteCore) StartupReport() (string, error) {
+	return n.startupReport, nil
 }
 
 func (n *NoteCore) callContext() context.Context {

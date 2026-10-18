@@ -122,6 +122,12 @@ class WailsAdapter implements NoteCoreApi {
     return (await this.svc.SearchNotes(query)) as SearchHit[];
   }
 
+  async startupReport(): Promise<string> {
+    // Copie éventuelle écrite par le backend avant migration du schéma ;
+    // jamais de chemin silencieux : l'interface l'annonce.
+    return ((await this.svc.StartupReport()) as string | null) ?? '';
+  }
+
   async exportNote(id: string): Promise<boolean> {
     return (await this.svc.ExportNote(id)) as boolean;
   }

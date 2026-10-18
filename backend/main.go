@@ -49,14 +49,25 @@ func run() error {
 		return err
 	}
 
-	db, err := storage.Open(filepath.Join(dir, "notecore.db"))
+	db, report, err := storage.OpenWithReport(filepath.Join(dir, "notecore.db"))
 	if err != nil {
 		return fmt.Errorf("ouverture de la base : %w", err)
 	}
 	defer db.Close()
 
+	// Une installation plus récente migre le schéma : la base telle
+	// qu'elle était chez l'utilisateur précédemment est conservée à côté,
+	// et le chemin en est annoncé dans l'application (aucun perdu, §11).
+	if report.SafetyCopy != "" {
+		log.Printf(
+			"migration du schéma (versions %v) : base précédente conservée dans %s",
+			report.Applied, report.SafetyCopy,
+		)
+	}
+
 	service := notes.New(db)
 	api := bindings.New(service, db)
+	api.SetStartupReport(report.SafetyCopy)
 
 	return wails.Run(&options.App{
 		Title:  "NoteCore",
