@@ -68,6 +68,7 @@ func run() error {
 		// (cahier des charges §8, critère 11).
 		MinWidth:  940,
 		MinHeight: 560,
+		OnStartup: api.Startup,
 		Linux: &linux.Options{
 			Icon:        appIcon,
 			ProgramName: "notecore",
