@@ -12,27 +12,33 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"runtime"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/preferences"
+	"notecore/backend/internal/review"
 )
 
 // NoteCore est la facade unique exposée à l'interface.
 type NoteCore struct {
 	svc   *notes.Service
 	prefs *preferences.Store
+	rev   *review.Service
 	db    *sql.DB
 	ctx   context.Context
 	// Copie de la base conservée avant une migration de schéma : annoncée
 	// à l'interface, jamais un fichier silencieux sur le disque.
 	startupReport string
+	// Dossier des données de l'utilisateur, montré dans le guide de prise en main.
+	dataDir string
 }
 
 func New(svc *notes.Service, db *sql.DB) *NoteCore {
 	if db == nil {
 		panic("bindings : base absente")
 	}
-	return &NoteCore{svc: svc, prefs: preferences.New(db), db: db}
+	return &NoteCore{svc: svc, prefs: preferences.New(db), rev: review.New(db), db: db}
 }
 
 // Startup reçoit le contexte du runtime Wails (appelé automatiquement).
@@ -47,6 +53,28 @@ func (n *NoteCore) Startup(ctx context.Context) {
 // une migration de schéma, pour que l'application puisse l'annoncer.
 func (n *NoteCore) SetStartupReport(safetyCopy string) {
 	n.startupReport = safetyCopy
+}
+
+// SetDataDir mémorise le dossier où vivent les notes, pour le guide.
+func (n *NoteCore) SetDataDir(dir string) {
+	n.dataDir = dir
+}
+
+// AppInfo décrit où l'application range les données de l'utilisateur et sur
+// quel système elle tourne : le guide de prise en main l'affiche, pour que
+// chacun sache quoi sauvegarder et où chercher.
+type AppInfo struct {
+	OS           string `json:"os"` // « linux », « windows », « darwin »
+	DataDir      string `json:"dataDir"`
+	DatabasePath string `json:"databasePath"`
+}
+
+func (n *NoteCore) AppInfo() (AppInfo, error) {
+	return AppInfo{
+		OS:           runtime.GOOS,
+		DataDir:      n.dataDir,
+		DatabasePath: filepath.Join(n.dataDir, "notecore.db"),
+	}, nil
 }
 
 // StartupReport renvoie le chemin de la base conservée avant la migration

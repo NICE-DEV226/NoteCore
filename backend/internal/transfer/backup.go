@@ -46,6 +46,7 @@ var tablesBackup = []string{
 // plus anciennes restaurables (ADR-006 : `attachments` en schéma 2).
 var schemaAddedTables = map[int][]string{
 	2: {"attachments"},
+	3: {"cards", "review_log"},
 }
 
 // requiredTables renvoie les tables attendues pour un schéma donné.
@@ -127,6 +128,15 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
+	// Même règle pour les cartes de révision (schéma 3, ADR-007).
+	hasCards, err := attachedTableExists(db, "restore_source", "cards")
+	if err != nil {
+		return err
+	}
+	hasReviewLog, err := attachedTableExists(db, "restore_source", "review_log")
+	if err != nil {
+		return err
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -139,7 +149,10 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 
 	// Colonnes explicites : la restauration reste correcte même si un
 	// futur schéma ajoute des colonnes positionnées autrement.
+	// L'historique et les cartes passent avant les notes : ils en dépendent.
 	statements := []string{
+		`DELETE FROM review_log`,
+		`DELETE FROM cards`,
 		`DELETE FROM note_tags`,
 		`DELETE FROM tags`,
 		`DELETE FROM notes_fts`,
@@ -161,6 +174,21 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 			`INSERT INTO attachments(id, note_id, filename, mime, size, data, created_at)
 				SELECT id, note_id, filename, mime, size, data, created_at FROM restore_source.attachments`,
 		)
+	}
+	if hasCards {
+		statements = append(statements,
+			`INSERT INTO cards(id, note_id, key, kind, front, back, due, stability, difficulty,
+			                   scheduled_days, reps, lapses, state, last_review, remaining_steps, orphaned_at, created_at)
+				SELECT id, note_id, key, kind, front, back, due, stability, difficulty,
+				       scheduled_days, reps, lapses, state, last_review, remaining_steps, orphaned_at, created_at
+				  FROM restore_source.cards`,
+		)
+		if hasReviewLog {
+			statements = append(statements,
+				`INSERT INTO review_log(id, card_id, rating, reviewed_at, state, before)
+					SELECT id, card_id, rating, reviewed_at, state, before FROM restore_source.review_log`,
+			)
+		}
 	}
 	statements = append(statements,
 		`INSERT INTO tags(id, name) SELECT id, name FROM restore_source.tags`,

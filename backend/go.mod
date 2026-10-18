@@ -4,6 +4,7 @@ go 1.27.2
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/open-spaced-repetition/go-fsrs/v4 v4.0.0
 	github.com/wailsapp/wails/v2 v2.10.2
 	modernc.org/sqlite v1.60.1
 )

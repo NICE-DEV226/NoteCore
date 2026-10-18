@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"notecore/backend/internal/review"
 )
 
 // Note reflète le modèle de données du cahier des charges (§7).
@@ -251,6 +253,13 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 	// Règle d'or : index FTS recalculé dans cette même transaction.
 	if err := reindexInTx(ctx, tx, id); err != nil {
 		return Note{}, err
+	}
+	// Les cartes de révision sont dérivées du texte : elles suivent la note
+	// dans la même transaction (ADR-007). Inutile si le contenu n'a pas changé.
+	if before.Content != n.Content {
+		if err := review.SyncNote(ctx, tx, id, n.Content, time.Now().UTC()); err != nil {
+			return Note{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Note{}, fmt.Errorf("commit mise à jour : %w", err)

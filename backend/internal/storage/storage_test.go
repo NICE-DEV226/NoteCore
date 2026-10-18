@@ -72,7 +72,7 @@ func TestReouvertureSansMigration(t *testing.T) {
 }
 
 // Simule une base laissée par une version plus ancienne de NoteCore
-// (schéma 1 : table d'attachments absente). La version courante doit la
+// (schéma 1 : ni pièces jointes ni cartes). La version courante doit la
 // mettre à jour ET en conserver une copie exploitable, à côté d'elle.
 func TestMigrationConserveLaBasePrecedente(t *testing.T) {
 	dir := t.TempDir()
@@ -91,10 +91,12 @@ func TestMigrationConserveLaBasePrecedente(t *testing.T) {
 		t.Fatalf("insertion : %v", err)
 	}
 	// Recule la base à l'état d'une installation antérieure.
-	if _, err := db.Exec(`DROP TABLE IF EXISTS attachments`); err != nil {
-		t.Fatalf("retour arrière : %v", err)
+	for _, table := range []string{"review_log", "cards", "attachments"} {
+		if _, err := db.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
+			t.Fatalf("retour arrière : %v", err)
+		}
 	}
-	if _, err := db.Exec(`DELETE FROM schema_migrations WHERE version = 2`); err != nil {
+	if _, err := db.Exec(`DELETE FROM schema_migrations WHERE version >= 2`); err != nil {
 		t.Fatalf("retour arrière : %v", err)
 	}
 	db.Close()

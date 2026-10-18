@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"notecore/backend/internal/notes"
+	"notecore/backend/internal/review"
 	"notecore/backend/internal/storage"
 )
 
@@ -227,7 +228,29 @@ func TestBackupEtValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw[len(raw)/2] ^= 0xFF
+	// On altère un octet DANS les données de la base, pas « au milieu du
+	// fichier » : selon la taille de la base, le milieu peut tomber sur un
+	// champ d'en-tête de l'archive (date, attributs) sans conséquence, et le
+	// test devenait intermittent.
+	zr, err := zip.OpenReader(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target int64 = -1
+	for _, f := range zr.File {
+		if f.Name == "notecore.db" {
+			offset, err := f.DataOffset()
+			if err != nil {
+				t.Fatal(err)
+			}
+			target = offset + int64(f.CompressedSize64)/2
+		}
+	}
+	zr.Close()
+	if target < 0 {
+		t.Fatal("base absente de l'archive")
+	}
+	raw[target] ^= 0xFF
 	if err := os.WriteFile(corrupted, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -536,4 +559,49 @@ func TestManifestFolderNames(t *testing.T) {
 		return
 	}
 	t.Fatal("manifest.json absent")
+}
+
+// Les cartes et leur historique voyagent avec la sauvegarde (ADR-007) : une
+// restauration ne remet pas l'apprentissage à zéro.
+func TestRestoreBackupConserveLesCartes(t *testing.T) {
+	db, svc := makeDB(t)
+	ctx := context.Background()
+	created, err := svc.CreateNote(ctx, "révision", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, created.ID, notes.Patch{Content: stringPtr("Le {{c1::noyau}} ordonnance.")}); err != nil {
+		t.Fatal(err)
+	}
+	rev := review.New(db)
+	card, err := rev.Next(ctx)
+	if err != nil || card == nil {
+		t.Fatalf("carte attendue : %v %v", card, err)
+	}
+	if err := rev.Answer(ctx, card.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "cartes.zip")
+	schemaVersion, _ := storage.SchemaVersion(db)
+	if err := CreateBackup(db, schemaVersion, dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNote(ctx, created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreBackup(db, schemaVersion, dest); err != nil {
+		t.Fatalf("restauration : %v", err)
+	}
+
+	var state, logs int
+	if err := db.QueryRow(`SELECT state FROM cards WHERE id = ?`, card.ID).Scan(&state); err != nil {
+		t.Fatalf("carte perdue à la restauration : %v", err)
+	}
+	if state == 0 {
+		t.Error("l'état d'apprentissage doit être restauré")
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM review_log`).Scan(&logs); err != nil || logs != 1 {
+		t.Errorf("historique restauré = %d (%v), attendu 1", logs, err)
+	}
 }

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"log"
@@ -68,16 +69,24 @@ func run() error {
 	service := notes.New(db)
 	api := bindings.New(service, db)
 	api.SetStartupReport(report.SafetyCopy)
+	api.SetDataDir(dir)
+
+	// Cartes de révision : indexe les notes d'une installation qui monte en
+	// version et purge les cartes mises de côté depuis trop longtemps. Une
+	// panne ici ne doit jamais empêcher d'ouvrir ses notes.
+	if err := api.MaintainReview(context.Background()); err != nil {
+		log.Printf("révision : maintenance impossible : %v", err)
+	}
 
 	return wails.Run(&options.App{
 		Title:  "NoteCore",
 		Width:  1024,
 		Height: 720,
-		// Seuil d'éditabilité : en dessous de 900 px la mise en page
-		// replie l'éditeur (Workbench.svelte). Interdire cette zone
-		// garantit qu'une fenêtre atteignable reste toujours éditable
-		// (cahier des charges §8, critère 11).
-		MinWidth:  940,
+		// Seuil d'éditabilité (cahier des charges §8, critère 11) : assez
+		// étroit pour une fenêtre à demi-écran sur un portable ou sous
+		// gestionnaire de fenêtres en mosaïque, assez large pour garder
+		// les trois zones lisibles (Workbench.svelte).
+		MinWidth:  720,
 		MinHeight: 560,
 		OnStartup: api.Startup,
 		Linux: &linux.Options{

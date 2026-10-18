@@ -249,6 +249,11 @@ func (n *NoteCore) RestoreBackup(path string) (string, error) {
 		_ = os.Remove(safety)
 		return "", err
 	}
+	// Une sauvegarde d'avant les cartes n'en contient pas : on les dérive
+	// des notes restaurées (sans effet si elles sont déjà là).
+	if err := n.rev.Maintain(n.callContext()); err != nil {
+		return safety, fmt.Errorf("sauvegarde restaurée, mais les cartes n'ont pas pu être reconstruites : %w", err)
+	}
 	return safety, nil
 }
 

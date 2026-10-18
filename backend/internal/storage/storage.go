@@ -148,6 +148,46 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 CREATE INDEX IF NOT EXISTS idx_attachments_note_id ON attachments(note_id);
 `},
+	{version: 3, sql: `
+-- Révision espacée (ADR-007). Les cartes sont DÉRIVÉES du Markdown des notes
+-- (« {{c1::trou}} », « Question :: Réponse ») : la note reste l'unique source
+-- du texte, ces tables ne portent que l'état d'apprentissage. Une carte suit
+-- sa note dans la suppression (ON DELETE CASCADE).
+CREATE TABLE IF NOT EXISTS cards (
+	id              TEXT PRIMARY KEY,
+	note_id         TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+	key             TEXT NOT NULL,
+	kind            TEXT NOT NULL CHECK (kind IN ('cloze', 'qa')),
+	front           TEXT NOT NULL,
+	back            TEXT NOT NULL,
+	due             TEXT NOT NULL,
+	stability       REAL NOT NULL DEFAULT 0,
+	difficulty      REAL NOT NULL DEFAULT 0,
+	scheduled_days  INTEGER NOT NULL DEFAULT 0,
+	reps            INTEGER NOT NULL DEFAULT 0,
+	lapses          INTEGER NOT NULL DEFAULT 0,
+	state           INTEGER NOT NULL DEFAULT 0 CHECK (state BETWEEN 0 AND 3),
+	last_review     TEXT NOT NULL DEFAULT '',
+	remaining_steps INTEGER NOT NULL DEFAULT 0,
+	orphaned_at     TEXT,
+	created_at      TEXT NOT NULL,
+	UNIQUE (note_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_cards_due ON cards(state, due) WHERE orphaned_at IS NULL;
+
+-- Historique de chaque réponse. « before » conserve la carte telle qu'elle
+-- était, pour annuler la dernière réponse sans approximation.
+CREATE TABLE IF NOT EXISTS review_log (
+	id          TEXT PRIMARY KEY,
+	card_id     TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+	rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 4),
+	reviewed_at TEXT NOT NULL,
+	state       INTEGER NOT NULL,
+	before      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_review_log_card ON review_log(card_id);
+CREATE INDEX IF NOT EXISTS idx_review_log_at ON review_log(reviewed_at);
+`},
 }
 
 // SchemaVersion renvoie la version de schéma courante — information
