@@ -1,4 +1,12 @@
-import type { Attachment, AttachmentData, Folder, Note, NotePatch, SearchHit } from './types';
+import type {
+  Attachment,
+  AttachmentData,
+  Folder,
+  Note,
+  NotePatch,
+  RestorePreview,
+  SearchHit
+} from './types';
 
 /**
  * Contrat unique entre l'interface et le backend (ARCHITECTURE.md §2).
@@ -45,7 +53,18 @@ export interface NoteCoreApi {
    * Renvoie false si le dialog est annulé.
    */
   createBackup(): Promise<boolean>;
-  restoreBackup(): Promise<boolean>;
+  /**
+   * Ouvre le sélecteur de fichier et valide la sauvegarde choisie SANS
+   * rien écrire. Un `path` vide signifie que l'utilisateur a annulé ;
+   * une archive corrompue ou incompatible est refusée ici, avant toute
+   * confirmation.
+   */
+  inspectBackup(): Promise<RestorePreview>;
+  /**
+   * Restaure la sauvegarde préalablement inspectée (chemin absolu) et
+   * renvoie le chemin de la copie de sécurité des données remplacées.
+   */
+  restoreBackup(path: string): Promise<string>;
 
   // --- préférences (cahier des charges §3.6) ---
 

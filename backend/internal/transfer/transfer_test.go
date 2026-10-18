@@ -211,6 +211,9 @@ func TestBackupEtValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validation : %v", err)
 	}
+	if manifest.Notes != 1 {
+		t.Errorf("nombre de notes du manifeste = %d, attendu 1", manifest.Notes)
+	}
 	if manifest.Format != FormatBackup || manifest.SchemaVersion != schemaVersion {
 		t.Errorf("manifeste incohérent : %+v", manifest)
 	}
@@ -230,6 +233,24 @@ func TestBackupEtValidation(t *testing.T) {
 	}
 	if _, err := ValidateBackup(corrupted); err == nil {
 		t.Error("corruption non détectée par l'empreinte SHA-256")
+	}
+}
+
+// Le contrôle d'éligibilité est partagé entre l'aperçu (avant toute
+// écriture) et la restauration elle-même.
+func TestCheckRestorable(t *testing.T) {
+	if err := CheckRestorable(nil, 2); err == nil {
+		t.Error("une sauvegarde non validée doit être refusée")
+	}
+	if err := CheckRestorable(&BackupManifest{SchemaVersion: 3}, 2); err == nil {
+		t.Error("une sauvegarde de schéma plus récent doit être refusée")
+	}
+	older := &BackupManifest{SchemaVersion: 1}
+	if err := CheckRestorable(older, 2); err != nil {
+		t.Errorf("une sauvegarde de schéma plus ancien reste restaurable : %v", err)
+	}
+	if err := CheckRestorable(older, 0); err != nil {
+		t.Errorf("le contrôle doit être désactivé avec une version courante nulle : %v", err)
 	}
 }
 

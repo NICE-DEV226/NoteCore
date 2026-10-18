@@ -341,6 +341,11 @@ export const mockApi: NoteCoreApi = {
     throw new Error('La sauvegarde est disponible dans l’application native.');
   },
 
+  async inspectBackup() {
+    await delay();
+    throw new Error('La restauration est disponible dans l’application native.');
+  },
+
   async restoreBackup() {
     await delay();
     throw new Error('La restauration est disponible dans l’application native.');

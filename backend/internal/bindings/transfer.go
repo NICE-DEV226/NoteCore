@@ -173,8 +173,22 @@ func (n *NoteCore) CreateBackup() (bool, error) {
 	return true, nil
 }
 
-// RestoreBackup valide puis restaure une sauvegarde complète choisie par l'utilisateur.
-func (n *NoteCore) RestoreBackup() (bool, error) {
+// RestorePreview décrit la sauvegarde choisie par l'utilisateur, avant
+// toute écriture (ADR-004) : la confirmation porte sur un fichier
+// identifié, daté et compté, jamais sur une action aveugle.
+type RestorePreview struct {
+	Path          string `json:"path"`
+	Name          string `json:"name"`
+	CreatedAt     string `json:"createdAt"`
+	SchemaVersion int    `json:"schemaVersion"`
+	Notes         int    `json:"notes"`
+}
+
+// InspectBackup ouvre le sélecteur de fichier et valide la sauvegarde
+// choisie SANS rien écrire. Un chemin vide signifie que l'utilisateur a
+// annulé. Une archive corrompue, incompatible ou issue d'une version
+// plus récente est écartée ici, avant toute confirmation.
+func (n *NoteCore) InspectBackup() (RestorePreview, error) {
 	path, err := wailsruntime.OpenFileDialog(n.callContext(), wailsruntime.OpenDialogOptions{
 		Title: "Restaurer une sauvegarde NoteCore",
 		Filters: []wailsruntime.FileFilter{
@@ -182,17 +196,80 @@ func (n *NoteCore) RestoreBackup() (bool, error) {
 		},
 	})
 	if err != nil {
-		return false, fmt.Errorf("dialog de restauration : %w", err)
+		return RestorePreview{}, fmt.Errorf("dialog de restauration : %w", err)
 	}
 	if path == "" {
-		return false, nil
+		return RestorePreview{}, nil // annulé
+	}
+
+	manifest, err := transfer.ValidateBackup(path)
+	if err != nil {
+		return RestorePreview{}, err
 	}
 	schemaVersion, err := storage.SchemaVersion(n.db)
 	if err != nil {
-		return false, err
+		return RestorePreview{}, err
+	}
+	if err := transfer.CheckRestorable(manifest, schemaVersion); err != nil {
+		return RestorePreview{}, err
+	}
+	return RestorePreview{
+		Path:          path,
+		Name:          filepath.Base(path),
+		CreatedAt:     manifest.CreatedAt,
+		SchemaVersion: manifest.SchemaVersion,
+		Notes:         manifest.Notes,
+	}, nil
+}
+
+// RestoreBackup restaure une sauvegarde choisie lors de l'inspection.
+// Une copie de sécurité de la base courante est écrite avant tout
+// remplacement : une restauration malheureuse reste rattrapable. Son
+// chemin est renvoyé pour être annoncé, jamais conservé en silence.
+func (n *NoteCore) RestoreBackup(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("sauvegarde non identifiée")
+	}
+	safety, err := n.safetyCopy()
+	if err != nil {
+		return "", err
+	}
+	schemaVersion, err := storage.SchemaVersion(n.db)
+	if err != nil {
+		_ = os.Remove(safety)
+		return "", err
 	}
 	if err := transfer.RestoreBackup(n.db, schemaVersion, path); err != nil {
-		return false, err
+		// Rien n'a été appliqué (validation ou transaction annulée) :
+		// la copie de sécurité n'a plus d'objet.
+		_ = os.Remove(safety)
+		return "", err
 	}
-	return true, nil
+	return safety, nil
+}
+
+// safetyCopy écrit une copie cohérente de la base courante à côté d'elle
+// (même mécanisme que la sauvegarde : VACUUM INTO), en 0600.
+func (n *NoteCore) safetyCopy() (string, error) {
+	var (
+		seq  int
+		name string
+		file string
+	)
+	if err := n.db.QueryRow(
+		`SELECT seq, name, file FROM pragma_database_list WHERE name = 'main'`,
+	).Scan(&seq, &name, &file); err != nil {
+		return "", fmt.Errorf("localisation de la base : %w", err)
+	}
+	if file == "" {
+		return "", fmt.Errorf("base en mémoire : copie de sécurité impossible")
+	}
+	dest := fmt.Sprintf("%s.avant-restauration-%s", file, time.Now().UTC().Format("20060102-150405"))
+	if _, err := n.db.Exec(`VACUUM INTO ?`, dest); err != nil {
+		return "", fmt.Errorf("copie de sécurité : %w", err)
+	}
+	if err := os.Chmod(dest, 0o600); err != nil {
+		return "", fmt.Errorf("permissions de la copie de sécurité : %w", err)
+	}
+	return dest, nil
 }

@@ -65,12 +65,12 @@ SQLite est l'unique source de vérité ; le frontend n'appelle que les méthodes
 
 ## Prérequis
 
-| Outil | Version |
-|---|---|
-| Go | 1.27 ou plus récent (aligné sur `backend/go.mod`) |
-| Node.js et npm | Node 20 ou plus récent |
-| CLI Wails | v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
-| Linux | `gcc`, `pkg-config`, GTK 3, WebKitGTK 4.1 |
+| Outil          | Version                                                         |
+| -------------- | --------------------------------------------------------------- |
+| Go             | 1.27 ou plus récent (aligné sur `backend/go.mod`)               |
+| Node.js et npm | Node 20 ou plus récent                                          |
+| CLI Wails      | v2 — `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
+| Linux          | `gcc`, `pkg-config`, GTK 3, WebKitGTK 4.1                       |
 
 Installation des dépendances système :
 
@@ -145,12 +145,12 @@ Pour l'application complète avec rechargement, voir `docs/procedure-build.md`.
 
 ## Tests et intégration continue
 
-| Commande | Portée |
-| --- | --- |
-| `cd backend && gofmt -l .` | formatage Go |
-| `cd backend && go vet ./...` | analyse statique Go |
-| `cd backend && go test ./...` | migrations, persistance, recherche, pièces jointes, export et sauvegarde |
-| `cd frontend && npm run check` | types et composants Svelte (`svelte-check`) |
+| Commande                       | Portée                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| `cd backend && gofmt -l .`     | formatage Go                                                             |
+| `cd backend && go vet ./...`   | analyse statique Go                                                      |
+| `cd backend && go test ./...`  | migrations, persistance, recherche, pièces jointes, export et sauvegarde |
+| `cd frontend && npm run check` | types et composants Svelte (`svelte-check`)                              |
 
 L'intégration continue rejoue ces contrôles, puis compile l'application complète avec Wails, à chaque push et pull request sur `main`. Voir `.github/workflows/ci.yml`.
 
@@ -160,11 +160,11 @@ Un second workflow, `.github/workflows/windows.yml`, construit l'exécutable Win
 
 Base locale SQLite, en mode WAL :
 
-| Système | Emplacement |
-| --- | --- |
-| Linux | `~/.config/NoteCore/notecore.db` |
-| macOS | `~/Library/Application Support/NoteCore/notecore.db` |
-| Windows | `%APPDATA%\NoteCore\notecore.db` |
+| Système | Emplacement                                          |
+| ------- | ---------------------------------------------------- |
+| Linux   | `~/.config/NoteCore/notecore.db`                     |
+| macOS   | `~/Library/Application Support/NoteCore/notecore.db` |
+| Windows | `%APPDATA%\NoteCore\notecore.db`                     |
 
 **Export.** Une note part en fichier Markdown UTF-8 ; ses pièces jointes sont écrites dans un dossier frère `<titre>-assets/` et les références sont réécrites en chemins relatifs, de sorte que le document reste lisible sans NoteCore. Plusieurs notes produisent une archive versionnée accompagnée d'un manifeste JSON.
 

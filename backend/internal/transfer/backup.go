@@ -66,6 +66,27 @@ type BackupManifest struct {
 	Database      string `json:"database"`
 	SHA256        string `json:"sha256"`
 	Size          int64  `json:"size"`
+	// Notes compte les notes contenues dans la sauvegarde. Présenté dans
+	// l'aperçu avant restauration pour confirmer la bonne archive ; vaut 0
+	// pour les sauvegardes antérieures à ce champ.
+	Notes int `json:"notes"`
+}
+
+// CheckRestorable vérifie qu'une sauvegarde validée peut être appliquée
+// par l'application courante : une sauvegarde issue d'un schéma PLUS
+// RÉCENT est refusée (la restaurer risquerait une perte silencieuse de
+// colonnes). Une version courante <= 0 désactive ce contrôle.
+func CheckRestorable(manifest *BackupManifest, currentSchemaVersion int) error {
+	if manifest == nil {
+		return fmt.Errorf("sauvegarde non validée")
+	}
+	if currentSchemaVersion > 0 && manifest.SchemaVersion > currentSchemaVersion {
+		return fmt.Errorf(
+			"sauvegarde issue d'une version plus récente (schéma %d > %d) : mettez NoteCore à jour avant de restaurer",
+			manifest.SchemaVersion, currentSchemaVersion,
+		)
+	}
+	return nil
 }
 
 // RestoreBackup valide puis restaure le contenu d'une sauvegarde complète.
@@ -80,11 +101,8 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
-	if currentSchemaVersion > 0 && manifest.SchemaVersion > currentSchemaVersion {
-		return fmt.Errorf(
-			"sauvegarde issue d'une version plus récente (schéma %d > %d) : mettez NoteCore à jour avant de restaurer",
-			manifest.SchemaVersion, currentSchemaVersion,
-		)
+	if err := CheckRestorable(manifest, currentSchemaVersion); err != nil {
+		return err
 	}
 
 	// La base extraite est bornée par la taille annoncée au manifeste :
@@ -237,6 +255,21 @@ func checkDatabaseFile(path string, schemaVersion int) error {
 	return nil
 }
 
+// countNotes compte les notes d'une copie de base, pour le manifeste et
+// l'aperçu de restauration. La copie existe déjà : lecture en mode seul.
+func countNotes(path string) (int, error) {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return 0, fmt.Errorf("ouverture de la copie : %w", err)
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM notes`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("comptage des notes : %w", err)
+	}
+	return count, nil
+}
+
 func tableExists(db *sql.DB, name string) (bool, error) {
 	var found int
 	err := db.QueryRow(
@@ -281,6 +314,10 @@ func CreateBackup(db *sql.DB, schemaVersion int, dest string) error {
 	if err != nil {
 		return err
 	}
+	noteCount, err := countNotes(tmpDB)
+	if err != nil {
+		return err
+	}
 	manifest := BackupManifest{
 		Format:        FormatBackup,
 		Version:       backupFormatVersion,
@@ -289,6 +326,7 @@ func CreateBackup(db *sql.DB, schemaVersion int, dest string) error {
 		Database:      "notecore.db",
 		SHA256:        sha,
 		Size:          size,
+		Notes:         noteCount,
 	}
 	manifestRaw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {

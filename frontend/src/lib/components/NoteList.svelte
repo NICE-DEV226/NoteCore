@@ -11,11 +11,13 @@
   import { tagTint } from '../utils/tags';
   import { SEARCH_INPUT_ID } from '../constants';
   import {
+    createNote,
     currentView,
     filteredNotes,
     folders,
     hasAnyNote,
     remoteSearchHits,
+    searchPending,
     searchQuery,
     selectNote,
     selectedNoteId,
@@ -39,6 +41,54 @@
         return 'Notes';
     }
   });
+
+  /**
+   * État vide propre à la vue active (cahier des charges §4.3) : un
+   * dossier vide, une liste de favoris sans étoile et une recherche sans
+   * résultat ne sont pas la même situation et ne se disent pas pareil.
+   */
+  const emptyView = derived([currentView, folders], ([$view, $folders]) => {
+    switch ($view.kind) {
+      case 'favorites':
+        return {
+          icon: 'notes' as const,
+          title: 'Aucun favori',
+          message: 'Ajoutez une étoile à une note pour la retrouver ici.'
+        };
+      case 'recent':
+        return {
+          icon: 'notes' as const,
+          title: 'Aucune note récente',
+          message: 'Vos notes les plus récemment modifiées apparaîtront ici.'
+        };
+      case 'folder': {
+        const name = $folders.find((f) => f.id === $view.folderId)?.name ?? 'Ce dossier';
+        return {
+          icon: 'notes' as const,
+          title: `« ${name} » est vide`,
+          message: 'Créez une note dans ce dossier pour le remplir.'
+        };
+      }
+      case 'tag':
+        return {
+          icon: 'notes' as const,
+          title: `Aucune note #${$view.tag}`,
+          message: 'Les notes portant cette étiquette apparaîtront ici.'
+        };
+      default:
+        return {
+          icon: 'notes' as const,
+          title: 'Aucune note',
+          message: 'Créez une note pour commencer.'
+        };
+    }
+  });
+
+  /** Création depuis un état vide : la note rejoint la vue active. */
+  function createNoteHere(): void {
+    const view = $currentView;
+    void createNote(view.kind === 'folder' ? view.folderId : null);
+  }
 </script>
 
 <section class="note-list">
@@ -68,18 +118,40 @@
   </div>
 
   <div class="list-inner">
-    {#if !$hasAnyNote}
+    {#if $hasAnyNote && $searchPending}
+      <!-- Réponse du moteur de recherche encore attendue : annoncer
+           « aucun résultat » ici serait faux (§3.3, §4.3). -->
+      <EmptyState
+        icon="search"
+        title="Recherche…"
+        message="Le moteur de recherche parcourt le titre, le contenu et les étiquettes de vos notes."
+      />
+    {:else if !$hasAnyNote}
       <EmptyState
         icon="notes"
         title="Aucune note créée"
-        message="Utilisez le bouton « Nouvelle note » pour commencer à organiser vos cours et vos projets."
+        message="Créez votre première note pour commencer à organiser vos cours et vos projets."
+        actionLabel="Créer une note"
+        onaction={createNoteHere}
       />
     {:else if $filteredNotes.length === 0}
-      <EmptyState
-        icon="search"
-        title="Aucun résultat"
-        message="Aucune note ne correspond à votre recherche. Vérifiez l'orthographe ou essayez quelques mots."
-      />
+      {#if $searchQuery.trim()}
+        <EmptyState
+          icon="search"
+          title="Aucun résultat"
+          message={`Aucune note ne correspond à « ${$searchQuery.trim()} ». Vérifiez l'orthographe ou essayez d'autres mots.`}
+          actionLabel="Effacer la recherche"
+          onaction={() => searchQuery.set('')}
+        />
+      {:else}
+        <EmptyState
+          icon={$emptyView.icon}
+          title={$emptyView.title}
+          message={$emptyView.message}
+          actionLabel="Créer une note"
+          onaction={createNoteHere}
+        />
+      {/if}
     {:else}
       <ul>
         {#each $filteredNotes as note (note.id)}

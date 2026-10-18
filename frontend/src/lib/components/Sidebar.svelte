@@ -15,25 +15,34 @@
     deleteFolder,
     renameFolder,
     favoritesCount,
+    folderError,
     folders,
     loaded,
     currentView,
     notes
   } from '../stores/workspace';
-  import { createNote, exportAllNotes, createBackup, restoreBackup } from '../stores/workspace';
+  import { createNote, exportAllNotes, createBackup, chooseBackupToRestore, restoreBackup, restorePreview } from '../stores/workspace';
   import { theme, setThemePref } from '../stores/appTheme';
   import { display, setDisplayPref } from '../stores/display';
-  import type { View } from '../api/types';
+  import { formatFullDate } from '../utils/format';
+  import type { RestorePreview, View } from '../api/types';
 
   let creatingFolder = $state(false);
   let newFolderName = $state('');
   let folderPendingDelete = $state<string | null>(null);
-  let restorePending = $state(false);
   let editingFolderId = $state<string | null>(null);
   let folderEditName = $state('');
 
   let folderInput = $state<HTMLInputElement | null>(null);
   let folderRenameInput = $state<HTMLInputElement | null>(null);
+
+  /** Identité de la sauvegarde, présentée avant l'écrasement des données. */
+  function describeBackup(preview: RestorePreview): string {
+    const parts: string[] = [];
+    if (preview.createdAt) parts.push(`créée le ${formatFullDate(preview.createdAt)}`);
+    if (preview.notes > 0) parts.push(`${preview.notes} note${preview.notes > 1 ? 's' : ''}`);
+    return parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  }
 
   function isActive(view: View, kind: string, arg?: string): boolean {
     if (view.kind === 'folder' && kind === 'folder') return view.folderId === arg;
@@ -44,27 +53,49 @@
   function startCreateFolder() {
     creatingFolder = true;
     newFolderName = '';
+    folderError.set(null);
     setTimeout(() => folderInput?.focus(), 0);
   }
 
-  function submitFolder() {
-    if (newFolderName.trim()) void createFolder(newFolderName);
-    creatingFolder = false;
-    newFolderName = '';
+  async function submitFolder() {
+    const name = newFolderName.trim();
+    if (!name) {
+      creatingFolder = false;
+      newFolderName = '';
+      return;
+    }
+    // En cas d'échec, le champ reste ouvert et l'erreur s'affiche dessous :
+    // la saisie n'est pas perdue et l'erreur n'est pas confondue avec un
+    // problème d'enregistrement de la note ouverte.
+    if (await createFolder(name)) {
+      creatingFolder = false;
+      newFolderName = '';
+    } else {
+      setTimeout(() => folderInput?.focus(), 0);
+    }
   }
 
   function startRenameFolder(folderId: string, name: string): void {
     editingFolderId = folderId;
     folderEditName = name;
+    folderError.set(null);
     setTimeout(() => folderRenameInput?.focus(), 0);
   }
 
   async function submitRenameFolder(): Promise<void> {
     const id = editingFolderId;
     const name = folderEditName.trim();
-    editingFolderId = null;
-    folderEditName = '';
-    if (id && name) await renameFolder(id, name);
+    if (!id || !name) {
+      editingFolderId = null;
+      folderEditName = '';
+      return;
+    }
+    if (await renameFolder(id, name)) {
+      editingFolderId = null;
+      folderEditName = '';
+    } else {
+      setTimeout(() => folderRenameInput?.focus(), 0);
+    }
   }
 
   function folderNoteCount(id: string): number {
@@ -198,6 +229,20 @@
           <li class="list-empty">Aucun dossier</li>
         {/if}
       </ul>
+
+      {#if $folderError}
+        <p class="folder-error" role="alert">
+          <span>{$folderError}</span>
+          <button
+            class="error-dismiss"
+            title="Masquer le message"
+            aria-label="Masquer le message"
+            onclick={() => folderError.set(null)}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        </p>
+      {/if}
     </div>
 
     <!-- Étiquettes -->
@@ -235,7 +280,7 @@
           Sauvegarde…
         </button>
       </div>
-      <button class="restore-btn" title="Restaurer une sauvegarde validée" onclick={() => (restorePending = true)}>
+      <button class="restore-btn" title="Restaurer une sauvegarde validée" onclick={() => void chooseBackupToRestore()}>
         <Icon name="upload" size={13} />
         Restaurer une sauvegarde
       </button>
@@ -323,13 +368,13 @@
   />
 {/if}
 
-{#if restorePending}
+{#if $restorePreview}
   <ConfirmDialog
     title="Restaurer cette sauvegarde ?"
-    message="Les données actuelles seront remplacées par la sauvegarde validée. Cette action ne peut pas être annulée."
-    confirmLabel="Choisir une sauvegarde"
-    onconfirm={() => { restorePending = false; void restoreBackup(); }}
-    oncancel={() => (restorePending = false)}
+    message={`La sauvegarde « ${$restorePreview.name} »${describeBackup($restorePreview)} remplacera toutes vos données actuelles. Une copie de sécurité de vos données actuelles est conservée automatiquement. Cette action ne peut pas être annulée.`}
+    confirmLabel="Restaurer"
+    onconfirm={() => void restoreBackup()}
+    oncancel={() => restorePreview.set(null)}
   />
 {/if}
 
@@ -527,6 +572,43 @@
     padding: 0.15rem 0.85rem;
     font-size: 0.8rem;
     color: var(--text-faint);
+  }
+
+  /* Erreur d'une opération sur un dossier : affichée sur place, à côté de
+     la liste concernée, et non dans la barre d'enregistrement de l'éditeur. */
+  .folder-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin: 0.35rem 0.85rem 0.2rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    background: var(--danger-soft);
+    color: var(--danger);
+    font-size: 0.78rem;
+    line-height: 1.3;
+  }
+  .folder-error span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .error-dismiss {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .error-dismiss:hover {
+    background: var(--hover);
   }
 
   .tags-section {

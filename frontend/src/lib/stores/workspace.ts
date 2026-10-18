@@ -7,7 +7,15 @@
 
 import { derived, get, writable } from 'svelte/store';
 import { api } from '../api/client';
-import type { Folder, Note, NotePatch, SaveState, SearchHit, View } from '../api/types';
+import type {
+  Folder,
+  Note,
+  NotePatch,
+  RestorePreview,
+  SaveState,
+  SearchHit,
+  View
+} from '../api/types';
 
 /** Délai sans saisie avant écriture (cahier des charges §3.5 : courte période). */
 const AUTOSAVE_DELAY_MS = 800;
@@ -53,13 +61,40 @@ export const remoteSearchHits = writable<Map<string, SearchHit> | null>(null);
 let searchSeq = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let workspaceListenersReady = false;
+/** Dernier texte de recherche dont les extraits ont été écartés. */
+let lastSearchedQuery: string | null = null;
 
-function handleBeforeUnload(): void {
+function handleBeforeUnload(e: BeforeUnloadEvent): void {
+  if (!pendingPatch) return;
+  void performSave();
+  // L'écriture passe par le pont Wails et ne peut pas être attendue :
+  // on demande confirmation plutôt que de perdre la saisie en silence.
+  e.preventDefault();
+  e.returnValue = 'Des modifications ne sont pas encore enregistrées.';
+}
+
+/** Filet de sécurité : exécuté même si `beforeunload` est ignoré. */
+function handlePageHide(): void {
   if (pendingPatch) void performSave();
+}
+
+/** Fenêtre masquée (fenêtre réduite, session verrouillée) : on écrit tout
+ *  de suite plutôt que d'attendre le délai d'autosauvegarde. */
+function handleVisibilityChange(): void {
+  if (document.visibilityState === 'hidden' && pendingPatch) void performSave();
 }
 
 /** Relance de la recherche backend, défendue contre les réponses en retard. */
 export function scheduleSearch(delayMs = 200): void {
+  // Dès que le texte change, les extraits connus ne décrivent plus la
+  // requête courante : on les écarte tout de suite plutôt que de laisser
+  // la liste filtrée par les résultats précédents (§3.3).
+  const current = get(searchQuery).trim();
+  if (current !== lastSearchedQuery) {
+    lastSearchedQuery = current;
+    remoteSearchHits.set(null);
+  }
+
   if (searchTimer !== null) clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
     const q = get(searchQuery).trim();
@@ -104,16 +139,19 @@ export const filteredNotes = derived(
         break;
     }
 
-    // La recherche porte sur le titre, le contenu et les étiquettes
-    // via le moteur du backend (cahier des charges §3.3). Une requête non vide
-    // interagit avec les hits connus ; si les hits ne sont pas encore
-    // arrivés, on n'affiche pas de faux « aucun résultat ». Les extraits
-    // renvoyés par le backend sont présentés dans la liste.
+    // La recherche s'appuie sur les extraits du moteur du backend
+    // (SQLite FTS5, §3.3). Les extraits sont invalidés dès que la requête
+    // change : la liste n'est jamais filtrée par une requête précédente.
+    // En leur absence, un filtre local provisoire prend le relais, et
+    // `searchPending` évite d'annoncer un « aucun résultat » prématuré.
     const q = $query.trim();
     if (q) {
       if ($hits) {
         list = list.filter((n) => $hits.has(n.id));
       } else {
+        // Réponse du moteur encore attendue : filtre local provisoire,
+        // remplacé dès l'arrivée des extraits de FTS5. `searchPending`
+        // empêche la liste d'annoncer « aucun résultat » trop tôt.
         list = list.filter(
           (n) =>
             n.title.toLowerCase().includes(q.toLowerCase()) ||
@@ -133,6 +171,16 @@ export const filteredNotes = derived(
 
 /** Y a-t-il au moins une note dans l'application ? (état vide du CDC §4.3) */
 export const hasAnyNote = derived(notes, ($notes) => $notes.length > 0);
+
+/**
+ * Une recherche est en cours d'exécution côté backend. Pendant ce délai
+ * la liste ne doit annoncer ni « aucun résultat », ni des extraits
+ * d'une requête précédente : elle attend (§3.3).
+ */
+export const searchPending = derived(
+  [searchQuery, remoteSearchHits],
+  ([$searchQuery, $hits]) => $searchQuery.trim().length > 0 && $hits === null
+);
 
 /** Nombre de favoris, pour le compteur de la barre latérale. */
 export const favoritesCount = derived(notes, ($notes) => $notes.filter((n) => n.isPinned).length);
@@ -217,6 +265,8 @@ export async function initWorkspace(): Promise<void> {
   // Ces abonnements sont installés une seule fois, même après une nouvelle tentative.
   searchQuery.subscribe(() => scheduleSearch());
   window.addEventListener('beforeunload', handleBeforeUnload);
+  window.addEventListener('pagehide', handlePageHide);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
 /** Sélectionne une note en forçant d'abord l'écriture des modifications en attente. */
@@ -292,30 +342,52 @@ export async function deleteNote(id: string): Promise<void> {
   }
 }
 
-export async function createFolder(name: string): Promise<void> {
+/**
+ * Dernière erreur d'une opération sur un dossier (création, renommage,
+ * suppression). Affichée près de la liste des dossiers : elle reste
+ * distincte de l'état d'enregistrement de la note ouverte, qui porte sur
+ * un autre objet.
+ */
+export const folderError = writable<string | null>(null);
+
+function folderErrorText(err: unknown): string {
+  return err instanceof Error ? err.message : "L'opération a échoué.";
+}
+
+export async function createFolder(name: string): Promise<boolean> {
   const trimmed = name.trim();
-  if (!trimmed) return;
+  if (!trimmed) return false;
+  folderError.set(null);
   try {
     const folder = await api.createFolder(trimmed);
     folders.update((list) => [...list, folder]);
-  } catch {
-    saveState.set('error');
+    return true;
+  } catch (err) {
+    // Une opération sur un dossier n'est pas un enregistrement de note :
+    // l'erreur s'affiche près de la liste des dossiers, pas dans la barre
+    // d'enregistrement de l'éditeur.
+    folderError.set(folderErrorText(err));
+    return false;
   }
 }
 
-export async function renameFolder(id: string, name: string): Promise<void> {
+export async function renameFolder(id: string, name: string): Promise<boolean> {
   const trimmed = name.trim();
-  if (!trimmed) return;
+  if (!trimmed) return false;
+  folderError.set(null);
   try {
     const folder = await api.renameFolder(id, trimmed);
     folders.update((list) => list.map((f) => (f.id === id ? folder : f)));
-  } catch {
-    saveState.set('error');
+    return true;
+  } catch (err) {
+    folderError.set(folderErrorText(err));
+    return false;
   }
 }
 
 /** Supprime un dossier sans toucher aux notes (cahier des charges §3.2). */
-export async function deleteFolder(id: string): Promise<void> {
+export async function deleteFolder(id: string): Promise<boolean> {
+  folderError.set(null);
   try {
     const moved = await api.deleteFolder(id);
     folders.update((list) => list.filter((f) => f.id !== id));
@@ -326,8 +398,10 @@ export async function deleteFolder(id: string): Promise<void> {
     // Si la vue courante est le dossier supprimé, repasser sur « toutes ».
     const view = get(currentView);
     if (view.kind === 'folder' && view.folderId === id) currentView.set({ kind: 'all' });
-  } catch {
-    saveState.set('error');
+    return true;
+  } catch (err) {
+    folderError.set(folderErrorText(err));
+    return false;
   }
 }
 
@@ -396,20 +470,48 @@ export async function createBackup(): Promise<void> {
   }
 }
 
-/** Restaure une sauvegarde validée puis recharge les données visibles. */
+/** Sauvegarde validée, en attente de confirmation avant écrasement. */
+export const restorePreview = writable<RestorePreview | null>(null);
+
+/**
+ * Choix de la sauvegarde à restaurer : ouvre le sélecteur système et
+ * valide l'archive SANS rien écrire. La confirmation porte ensuite sur un
+ * fichier identifié, daté et compté — jamais sur une action aveugle
+ * (ADR-004). Une archive corrompue ou trop récente est refusée ici.
+ */
+export async function chooseBackupToRestore(): Promise<void> {
+  try {
+    const preview = await api.inspectBackup();
+    if (!preview.path) return; // sélecteur annulé
+    restorePreview.set(preview);
+  } catch (err) {
+    notifyTransfer('error', `Sauvegarde refusée : ${transferErrorText(err)}`);
+  }
+}
+
+/** Restaure la sauvegarde confirmée puis recharge les données visibles. */
 export async function restoreBackup(): Promise<void> {
+  const preview = get(restorePreview);
+  restorePreview.set(null);
+  if (!preview) return;
   try {
     // Aucune écriture différée ne doit subsister : elle pourrait se
     // déclencher pendant la restauration et écrire dans la base restaurée.
     await flushSave();
-    const done = await api.restoreBackup();
-    if (!done) return;
+    const safetyPath = await api.restoreBackup(preview.path);
     await initWorkspace();
     selectedNoteId.set(null);
     currentView.set({ kind: 'all' });
     searchQuery.set('');
     remoteSearchHits.set(null);
-    notifyTransfer('info', 'Sauvegarde restaurée.');
+    // La copie de sécurité est annoncée : aucun fichier n'est écrit en
+    // silence sur le disque de l'utilisateur.
+    notifyTransfer(
+      'info',
+      safetyPath
+        ? `Sauvegarde restaurée. Vos données précédentes sont conservées dans ${safetyPath}.`
+        : 'Sauvegarde restaurée.'
+    );
   } catch (err) {
     notifyTransfer('error', `Échec de la restauration : ${transferErrorText(err)}`);
   }

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -73,7 +74,7 @@ func (s *Service) AddAttachment(ctx context.Context, noteID string, up Attachmen
 	}
 
 	name := safeAttachmentName(up.Filename)
-	mime := normalizeMime(up.Mime)
+	mime := resolveMime(up.Mime, name, data)
 	now := time.Now().UTC().Format(time.RFC3339)
 	a := Attachment{
 		ID:        newID(),
@@ -186,6 +187,43 @@ func safeAttachmentName(raw string) string {
 		name = name[:keep] + ext
 	}
 	return name
+}
+
+// imageExtMime associe une extension d'image au type correspondant.
+// Filet de sécurité quand le type déclaré manque (certaines WebView
+// laissent `File.type` vide) et que l'empreinte binaire ne suffit pas :
+// Go ne reconnaît pas le SVG, qui est du texte XML.
+var imageExtMime = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
+	".avif": "image/avif",
+	".svg":  "image/svg+xml",
+	".ico":  "image/x-icon",
+	".tif":  "image/tiff",
+	".tiff": "image/tiff",
+}
+
+// resolveMime détermine le type d'une pièce jointe. Le type déclaré est
+// prioritaire s'il désigne une image ; sinon on regarde le contenu
+// (empreinte binaire sur les premiers octets), puis l'extension pour les
+// formats que l'empreinte ne distingue pas. Une image importée reste
+// ainsi une image — jamais insérée comme un simple lien (ADR-006).
+func resolveMime(declared, name string, data []byte) string {
+	m := normalizeMime(declared)
+	if strings.HasPrefix(m, "image/") {
+		return m
+	}
+	if sniffed := http.DetectContentType(data); strings.HasPrefix(sniffed, "image/") {
+		return sniffed
+	}
+	if byExt, ok := imageExtMime[strings.ToLower(filepath.Ext(name))]; ok {
+		return byExt
+	}
+	return m
 }
 
 // normalizeMime borne et normalise le type déclaré. Il reste indicatif :

@@ -67,9 +67,9 @@ Le binaire est `backend/build/bin/notecore` ; le lancer :
 
 La base de données vit dans le répertoire utilisateur :
 
-- Linux  : `~/.config/NoteCore/notecore.db`
+- Linux : `~/.config/NoteCore/notecore.db`
 - Windows : `%APPDATA%\NoteCore\notecore.db`
-- macOS  : `~/Library/Application Support/NoteCore/notecore.db`
+- macOS : `~/Library/Application Support/NoteCore/notecore.db`
 
 ## Version Windows 10 / 11
 

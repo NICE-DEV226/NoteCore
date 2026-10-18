@@ -131,3 +131,49 @@ func TestNomPieceJointeAssaini(t *testing.T) {
 		t.Errorf("nom non assaini : %q", a.Filename)
 	}
 }
+
+// Le type d'une pièce jointe est déduit du contenu puis de l'extension
+// quand le navigateur ne le déclare pas correctement : une image
+// importée reste une image, donc insérée comme image dans la note et non
+// comme un simple lien (ADR-006).
+func TestTypePieceJointeDeduit(t *testing.T) {
+	png := []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d}
+	jpeg := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F'}
+	gif := []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>`)
+
+	cases := []struct {
+		label    string
+		filename string
+		mime     string
+		data     []byte
+		want     string
+	}{
+		{"png sans type déclaré", "capture.png", "", png, "image/png"},
+		{"png en type générique", "capture.png", "application/octet-stream", png, "image/png"},
+		{"jpeg déduit des octets", "photo.bin", "", jpeg, "image/jpeg"},
+		{"gif déduit des octets", "anim", "", gif, "image/gif"},
+		{"svg déduit de l'extension", "logo.svg", "", svg, "image/svg+xml"},
+		{"type d'image déclaré conservé", "x.png", "image/png", []byte("pas une image"), "image/png"},
+		{"fichier texte inchangé", "notes.txt", "", []byte("du texte"), "application/octet-stream"},
+		{"type déclaré non-image conservé", "doc.pdf", "application/pdf", []byte("%PDF-1.4"), "application/pdf"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			svc := newService(t)
+			n := addNote(t, svc, "types")
+			a, err := svc.AddAttachment(context.Background(), n.ID, notes.AttachmentUpload{
+				Filename:   tc.filename,
+				Mime:       tc.mime,
+				DataBase64: base64.StdEncoding.EncodeToString(tc.data),
+			})
+			if err != nil {
+				t.Fatalf("ajout pièce jointe : %v", err)
+			}
+			if a.Mime != tc.want {
+				t.Errorf("type déduit = %q, attendu %q", a.Mime, tc.want)
+			}
+		})
+	}
+}

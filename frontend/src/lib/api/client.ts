@@ -1,6 +1,6 @@
 import type { NoteCoreApi } from './contract';
 import { mockApi } from './mock';
-import type { Attachment, AttachmentData, Folder, Note, NotePatch, SearchHit } from './types';
+import type { Attachment, AttachmentData, Folder, Note, NotePatch, RestorePreview, SearchHit } from './types';
 
 /**
  * Point d'accès unique de l'interface au backend (ARCHITECTURE.md §2).
@@ -134,8 +134,20 @@ class WailsAdapter implements NoteCoreApi {
     return (await this.svc.CreateBackup()) as boolean;
   }
 
-  async restoreBackup(): Promise<boolean> {
-    return (await this.svc.RestoreBackup()) as boolean;
+  async inspectBackup(): Promise<RestorePreview> {
+    return ((await this.svc.InspectBackup()) as RestorePreview | null) ?? {
+      path: '',
+      name: '',
+      createdAt: '',
+      schemaVersion: 0,
+      notes: 0
+    };
+  }
+
+  async restoreBackup(path: string): Promise<string> {
+    // Go renvoie le chemin de la copie de sécurité (chaîne vide si la
+    // plateforme n'a pas pu en produire) : normalisé pour l'appelant.
+    return ((await this.svc.RestoreBackup(path)) as string | null) ?? '';
   }
 
   async getSettings(): Promise<Record<string, string>> {

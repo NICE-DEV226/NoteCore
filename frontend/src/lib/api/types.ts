@@ -61,6 +61,23 @@ export interface AttachmentData {
   dataBase64: string;
 }
 
+/**
+ * Description d'une sauvegarde choisie par l'utilisateur, établie AVANT
+ * toute écriture (cahier des charges §3.7) : la confirmation de
+ * restauration porte sur un fichier identifié et daté.
+ * `path` vide signifie que le sélecteur a été annulé.
+ */
+export interface RestorePreview {
+  path: string;
+  /** Nom du fichier choisi, pour l'identification. */
+  name: string;
+  /** Date de création de la sauvegarde (RFC 3339), si connue. */
+  createdAt: string;
+  schemaVersion: number;
+  /** Nombre de notes de la sauvegarde (0 si l'information est absente). */
+  notes: number;
+}
+
 /** Champs modifiables d'une note. */
 export type NotePatch = Partial<
   Pick<Note, 'title' | 'content' | 'folderId' | 'isPinned' | 'tags'>

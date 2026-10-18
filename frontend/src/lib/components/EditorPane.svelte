@@ -13,6 +13,7 @@
   import { formatFullDate, formatRelative, countWords } from '../utils/format';
   import { tagTint } from '../utils/tags';
   import { api } from '../api/client';
+  import type { Attachment } from '../api/types';
   import {
     deleteNote,
     exportSelectedNote,
@@ -32,6 +33,11 @@
 
   const note = $derived($selectedNote);
 
+  /** Les commandes de mise en forme n'agissent qu'en mode Édition : en
+   *  aperçu, le champ de saisie n'est pas monté et une commande serait
+   *  sans effet (ou insérée au mauvais endroit). */
+  const editing = $derived(mode === 'edit');
+
   const SAVE_LABELS: Record<string, string> = {
     saved: 'Enregistré',
     dirty: 'Modifications non enregistrées',
@@ -39,44 +45,125 @@
     error: "Erreur d'enregistrement"
   };
 
-  /** Insers une mise en forme autour de la sélection courante (§3.4). */
+  /** Applique OU retire une mise en forme autour de la sélection (§3.4).
+   *  Une barre d'outils qui ne sait qu'ajouter oblige à effacer à la main :
+   *  la même commande sert d'interrupteur. */
   function wrap(before: string, after: string, placeholder: string): void {
     const el = contentEl;
     if (!el || !note) return;
+    const content = note.content;
     const start = el.selectionStart ?? 0;
     const end = el.selectionEnd ?? 0;
-    const selected = note.content.slice(start, end) || placeholder;
-    const next =
-      note.content.slice(0, start) + before + selected + after + note.content.slice(end);
+    const selected = content.slice(start, end);
+
+    // 1. La sélection porte déjà le balisage complet : on le retire.
+    if (
+      selected.length >= before.length + after.length &&
+      selected.startsWith(before) &&
+      selected.endsWith(after)
+    ) {
+      const inner = selected.slice(before.length, selected.length - after.length);
+      replaceRange(el, content, start, end, inner, start, start + inner.length);
+      return;
+    }
+
+    // 2. Le balisage encadre la sélection : on le retire aussi.
+    const outerStart = start - before.length;
+    if (
+      outerStart >= 0 &&
+      content.slice(outerStart, start) === before &&
+      content.slice(end, end + after.length) === after
+    ) {
+      replaceRange(
+        el,
+        content,
+        outerStart,
+        end + after.length,
+        selected,
+        outerStart,
+        outerStart + selected.length
+      );
+      return;
+    }
+
+    // 3. Sinon on applique ; une sélection vide reçoit le texte d'exemple,
+    //    laissé sélectionné pour être remplacé directement à la frappe.
+    const text = selected || placeholder;
+    const next = content.slice(0, start) + before + text + after + content.slice(end);
     updateSelected({ content: next });
     void tick().then(() => {
       el.focus();
-      el.setSelectionRange(start + before.length, start + before.length + selected.length);
+      el.setSelectionRange(start + before.length, start + before.length + text.length);
     });
   }
 
-  /** Préfixe la ligne courante (titres, listes). */
+  /** Remplace [from, to) par text puis restaure une sélection dessus. */
+  function replaceRange(
+    el: HTMLTextAreaElement,
+    content: string,
+    from: number,
+    to: number,
+    text: string,
+    selStart: number,
+    selEnd: number
+  ): void {
+    updateSelected({ content: content.slice(0, from) + text + content.slice(to) });
+    void tick().then(() => {
+      el.focus();
+      el.setSelectionRange(selStart, selEnd);
+    });
+  }
+
+  /** Bornes des lignes touchées par la sélection courante. */
+  function selectedLines(content: string, start: number, end: number) {
+    const lineStart = start === 0 ? 0 : content.lastIndexOf('\n', start - 1) + 1;
+    const nextBreak = content.indexOf('\n', end);
+    return { lineStart, blockEnd: nextBreak === -1 ? content.length : nextBreak };
+  }
+
+  /** Ajoute — ou retire, si toutes les lignes de la sélection le portent
+   *  déjà — un préfixe sur chacune d'elles (titres, listes, citation). */
   function prefixLine(marker: string): void {
     const el = contentEl;
     if (!el || !note) return;
+    const content = note.content;
     const start = el.selectionStart ?? 0;
-    const lineStart = note.content.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
-    const next = note.content.slice(0, lineStart) + marker + note.content.slice(lineStart);
-    updateSelected({ content: next });
+    const end = el.selectionEnd ?? 0;
+    const { lineStart, blockEnd } = selectedLines(content, start, end);
+
+    const lines = content.slice(lineStart, blockEnd).split('\n');
+    const allPrefixed = lines.every((l) => l.startsWith(marker));
+    const nextLines = allPrefixed
+      ? lines.map((l) => l.slice(marker.length))
+      : lines.map((l) => (l.startsWith(marker) ? l : marker + l));
+    const nextBlock = nextLines.join('\n');
+    updateSelected({ content: content.slice(0, lineStart) + nextBlock + content.slice(blockEnd) });
     void tick().then(() => {
       el.focus();
-      el.setSelectionRange(start + marker.length, start + marker.length);
+      el.setSelectionRange(lineStart, lineStart + nextBlock.length);
     });
   }
 
-  /** Tabulation dans le textarea (le focus ne sort pas du champ). */
-  function insertTab(): void {
+  /** Indente (Tab) ou désindente (Maj+Tab) les lignes sélectionnées :
+   *  la touche ne fait plus sortir le focus du champ de saisie. */
+  function insertTab(outdent: boolean): void {
     const el = contentEl;
     if (!el || !note) return;
+    const content = note.content;
     const start = el.selectionStart ?? 0;
-    const next = note.content.slice(0, start) + '  ' + note.content.slice(el.selectionEnd ?? start);
-    updateSelected({ content: next });
-    void tick().then(() => el.setSelectionRange(start + 2, start + 2));
+    const end = el.selectionEnd ?? 0;
+    const { lineStart, blockEnd } = selectedLines(content, start, end);
+
+    const lines = content.slice(lineStart, blockEnd).split('\n');
+    const nextLines = outdent
+      ? lines.map((l) => l.replace(/^ {1,2}/, ''))
+      : lines.map((l) => '  ' + l);
+    const nextBlock = nextLines.join('\n');
+    updateSelected({ content: content.slice(0, lineStart) + nextBlock + content.slice(blockEnd) });
+    void tick().then(() => {
+      el.focus();
+      el.setSelectionRange(lineStart, lineStart + nextBlock.length);
+    });
   }
 
   /** Insère un fragment au curseur, en conservant la sélection. */
@@ -136,9 +223,64 @@
   /** Borne miroir du backend : refuser tôt évite un aller-retour inutile. */
   const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-  let fileInput = $state<HTMLInputElement | null>(null);
+  let imageInput = $state<HTMLInputElement | null>(null);
+  let anyInput = $state<HTMLInputElement | null>(null);
+  let titleEl = $state<HTMLInputElement | null>(null);
   let attachNotice = $state('');
   let attachBusy = $state(false);
+
+  /** Pièces jointes de la note ouverte, listées pour être supprimables :
+   *  sans cette liste, une image importée puis retirée du texte
+   *  resterait dans la base sans aucun moyen de la voir ni de l'enlever. */
+  let attachments = $state<Attachment[]>([]);
+  let attachmentError = $state('');
+  let attachmentPendingDelete = $state<Attachment | null>(null);
+
+  // Une note nouvellement créée (titre et contenu vides) reçoit le focus
+  // sur son titre : la première frappe n'est jamais perdue (CDC §4.1).
+  let lastFocusedNoteId = '';
+  $effect(() => {
+    const current = note;
+    if (!current || current.id === lastFocusedNoteId) return;
+    lastFocusedNoteId = current.id;
+    if (current.title.trim() !== '' || current.content.trim() !== '') return;
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return;
+    void tick().then(() => titleEl?.focus());
+  });
+
+  // Charge les pièces jointes à chaque changement de note sélectionnée.
+  $effect(() => {
+    const id = note?.id ?? '';
+    attachmentError = '';
+    if (!id) {
+      attachments = [];
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await api.listAttachments(id);
+        if (!cancelled) attachments = list;
+      } catch (err) {
+        if (!cancelled) {
+          attachmentError =
+            err instanceof Error ? err.message : 'Les pièces jointes sont illisibles.';
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  /** Extensions d'image reconnues localement : certaines WebView
+   *  laissent `File.type` vide. Le backend affine ensuite le type. */
+  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|avif|svgz?|ico|tiff?)$/i;
+
+  function looksLikeImage(file: File): boolean {
+    return file.type.startsWith('image/') || IMAGE_EXT.test(file.name);
+  }
 
   /** Légende sûre pour un lien/une image Markdown. */
   function altText(name: string): string {
@@ -159,23 +301,29 @@
     });
   }
 
-  /** Choisit un fichier local et l'insère comme pièce jointe de la note. */
-  async function onFilesPicked(e: Event): Promise<void> {
-    const input = e.currentTarget as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
-    input.value = ''; // permet de re-choisir le même fichier
+  /** Importe des fichiers du PC comme pièces jointes de la note.
+   *  En édition, la référence est insérée au curseur ; en aperçu, elle
+   *  est ajoutée en fin de note et l'image apparaît aussitôt. */
+  async function importFiles(files: File[], kind: 'image' | 'any'): Promise<void> {
     if (!note || files.length === 0) return;
 
     attachNotice = '';
     attachBusy = true;
     try {
       for (const file of files) {
+        if (kind === 'image' && !looksLikeImage(file)) {
+          attachNotice = `« ${file.name} » n'est pas une image reconnue.`;
+          continue;
+        }
         if (file.size > MAX_ATTACHMENT_BYTES) {
           attachNotice = `« ${file.name} » dépasse la taille maximale (10 Mio).`;
           continue;
         }
         const dataBase64 = await readFileAsBase64(file);
+        // Le type retenu vient du backend (empreinte binaire) : une image
+        // importée est insérée comme image, jamais comme un simple lien.
         const att = await api.addAttachment(note.id, file.name, file.type, dataBase64);
+        attachments = [...attachments, att];
         const snippet = att.mime.startsWith('image/')
           ? `![${altText(att.filename)}](attachment:${att.id})`
           : `[${altText(att.filename)}](attachment:${att.id})`;
@@ -186,6 +334,50 @@
     } finally {
       attachBusy = false;
     }
+  }
+
+  async function onFilesPicked(e: Event, kind: 'image' | 'any'): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    input.value = ''; // permet de re-choisir le même fichier
+    await importFiles(files, kind);
+  }
+
+  /** Retire du texte les références Markdown à une pièce jointe : une
+   *  référence orpheline afficherait une image cassée dans l'aperçu. */
+  function stripAttachmentRefs(content: string, attachmentId: string): string {
+    const id = attachmentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const reference = new RegExp(`!?\\[[^\\]]*\\]\\(attachment:${id}\\)`, 'g');
+    return content.replace(reference, '').replace(/[ \t]+\n/g, '\n');
+  }
+
+  /** Supprime la pièce jointe confirmée, dans la base et dans le texte. */
+  async function removeAttachment(): Promise<void> {
+    const att = attachmentPendingDelete;
+    const current = note;
+    attachmentPendingDelete = null;
+    if (!att || !current) return;
+
+    attachmentError = '';
+    attachBusy = true;
+    try {
+      await api.deleteAttachment(att.id);
+      attachments = attachments.filter((a) => a.id !== att.id);
+      const cleaned = stripAttachmentRefs(current.content, att.id);
+      if (cleaned !== current.content) updateSelected({ content: cleaned });
+    } catch (err) {
+      attachmentError =
+        err instanceof Error ? err.message : 'La suppression de la pièce jointe a échoué.';
+    } finally {
+      attachBusy = false;
+    }
+  }
+
+  /** Libellé court d'une pièce jointe : taille lisible, nom complet en info. */
+  function attachmentSize(bytes: number): string {
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mio`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} Kio`;
+    return `${bytes} o`;
   }
 
   async function onFolderMove(e: Event) {
@@ -220,60 +412,73 @@
     <!-- Barre supérieure : mise en forme et état de sauvegarde -->
     <div class="toolbar">
       <div class="formatting" role="group" aria-label="Mise en forme">
-        <button title="Titre 1" aria-label="Titre 1" onclick={() => prefixLine('# ')}>H1</button>
-        <button title="Titre 2" aria-label="Titre 2" onclick={() => prefixLine('## ')}>H2</button>
-        <button title="Titre 3" aria-label="Titre 3" onclick={() => prefixLine('### ')}>H3</button>
+        <button title="Titre 1" aria-label="Titre 1" disabled={!editing} onclick={() => prefixLine('# ')}>H1</button>
+        <button title="Titre 2" aria-label="Titre 2" disabled={!editing} onclick={() => prefixLine('## ')}>H2</button>
+        <button title="Titre 3" aria-label="Titre 3" disabled={!editing} onclick={() => prefixLine('### ')}>H3</button>
         <span class="sep" aria-hidden="true"></span>
-        <button title="Gras (Ctrl+B)" aria-label="Gras" onclick={() => wrap('**', '**', 'texte')}
+        <button title="Gras (Ctrl+B)" aria-label="Gras" disabled={!editing} onclick={() => wrap('**', '**', 'texte')}
           ><strong>G</strong></button
         >
-        <button title="Italique (Ctrl+I)" aria-label="Italique" onclick={() => wrap('*', '*', 'texte')}
+        <button title="Italique (Ctrl+I)" aria-label="Italique" disabled={!editing} onclick={() => wrap('*', '*', 'texte')}
           ><em>I</em></button
         >
-        <button title="Mise en évidence" aria-label="Mise en évidence" onclick={() => wrap('==', '==', 'évidence')}
+        <button title="Mise en évidence" aria-label="Mise en évidence" disabled={!editing} onclick={() => wrap('==', '==', 'évidence')}
           >==</button
         >
-        <button title="Code en ligne" aria-label="Code en ligne" onclick={() => wrap('`', '`', 'code')}
+        <button title="Code en ligne" aria-label="Code en ligne" disabled={!editing} onclick={() => wrap('`', '`', 'code')}
           >`</button
         >
         <span class="sep" aria-hidden="true"></span>
-        <button title="Liste à puces" aria-label="Liste à puces" onclick={() => prefixLine('- ')}>–</button>
-        <button title="Liste ordonnée" aria-label="Liste ordonnée" onclick={() => prefixLine('1. ')}>1.</button>
-        <button title="Case à cocher" aria-label="Case à cocher" onclick={() => prefixLine('- [ ] ')}>[ ]</button>
-        <button title="Citation" aria-label="Citation" onclick={() => prefixLine('> ')}>&gt;</button>
+        <button title="Liste à puces" aria-label="Liste à puces" disabled={!editing} onclick={() => prefixLine('- ')}>–</button>
+        <button title="Liste ordonnée" aria-label="Liste ordonnée" disabled={!editing} onclick={() => prefixLine('1. ')}>1.</button>
+        <button title="Case à cocher" aria-label="Case à cocher" disabled={!editing} onclick={() => prefixLine('- [ ] ')}>[ ]</button>
+        <button title="Citation" aria-label="Citation" disabled={!editing} onclick={() => prefixLine('> ')}>&gt;</button>
         <span class="sep" aria-hidden="true"></span>
-        <button title="Lien" aria-label="Lien" onclick={() => wrap('[', '](https://)', 'texte')}>Lien</button>
-        <button title="Image depuis une URL" aria-label="Image depuis une URL" onclick={() => wrap('![', '](https://)', 'légende')}
-          >Image</button
-        >
+        <button title="Lien" aria-label="Lien" disabled={!editing} onclick={() => wrap('[', '](https://)', 'texte')}>Lien</button>
         <button
-          title="Joindre un fichier ou une image depuis l'ordinateur"
-          aria-label="Joindre un fichier ou une image"
+          title="Importer une image depuis l'ordinateur"
+          aria-label="Importer une image depuis l'ordinateur"
           disabled={attachBusy}
-          onclick={() => {
-            mode = 'edit'; // voir la référence s'insérer
-            fileInput?.click();
-          }}
+          onclick={() => imageInput?.click()}
+        >
+          Image
+        </button>
+        <input
+          bind:this={imageInput}
+          type="file"
+          accept="image/*"
+          multiple
+          class="file-input"
+          onchange={(e) => void onFilesPicked(e, 'image')}
+        />
+        <button
+          title="Joindre un fichier depuis l'ordinateur"
+          aria-label="Joindre un fichier depuis l'ordinateur"
+          disabled={attachBusy}
+          onclick={() => anyInput?.click()}
         >
           {attachBusy ? 'Ajout…' : 'Joindre'}
         </button>
         <input
-          bind:this={fileInput}
+          bind:this={anyInput}
           type="file"
           multiple
           class="file-input"
-          onchange={onFilesPicked}
+          onchange={(e) => void onFilesPicked(e, 'any')}
         />
-        <button title="Bloc de code" aria-label="Bloc de code" onclick={() => wrap('\n```\n', '\n```\n', 'code')}
+        <button title="Bloc de code" aria-label="Bloc de code" disabled={!editing} onclick={() => wrap('\n```\n', '\n```\n', 'code')}
           >{'{ }'}</button
         >
-        <button title="Séparateur horizontal" aria-label="Séparateur horizontal" onclick={() => insertText('\n---\n')}
+        <button title="Séparateur horizontal" aria-label="Séparateur horizontal" disabled={!editing} onclick={() => insertText('\n---\n')}
           >—</button
         >
         <span class="sep" aria-hidden="true"></span>
-        <button title="Effacer la mise en forme" aria-label="Effacer la mise en forme" onclick={clearFormat}
+        <button title="Effacer la mise en forme" aria-label="Effacer la mise en forme" disabled={!editing} onclick={clearFormat}
           >Effacer</button
         >
+        {#if !editing}
+          <span class="preview-hint">Mise en forme en mode « Éditer »</span>
+        {/if}
       </div>
 
       <div class="right">
@@ -290,7 +495,7 @@
         {/if}
         <button
           class="mode"
-          title="Exporter la note en Markdown"
+          title="Exporter la note en Markdown (.md + images) vers l'ordinateur"
           onclick={() => void exportSelectedNote()}
         >
           <Icon name="download" size={14} />
@@ -306,6 +511,7 @@
       <!-- Titre modifiable -->
       <input
         class="title"
+        bind:this={titleEl}
         value={note.title}
         placeholder="Titre de la note"
         aria-label="Titre de la note"
@@ -347,20 +553,51 @@
         </div>
       </div>
 
+      <!-- Pièces jointes locales : visibles et supprimables, quel que soit
+           le mode (une image importée doit rester gérable). -->
+      {#if attachments.length > 0 || attachmentError}
+        <div class="attachments">
+          <span class="attachments-label">
+            <Icon name="paperclip" size={12} />
+            Pièces jointes
+          </span>
+          <div class="attachment-list">
+            {#each attachments as att (att.id)}
+              <span class="attachment" title={`${att.filename} — ${att.mime}`}>
+                <span class="attachment-name">{att.filename}</span>
+                <span class="attachment-size">{attachmentSize(att.size)}</span>
+                <button
+                  class="attachment-x"
+                  title={`Supprimer « ${att.filename} »`}
+                  aria-label={`Supprimer la pièce jointe ${att.filename}`}
+                  disabled={attachBusy}
+                  onclick={() => (attachmentPendingDelete = att)}
+                >
+                  <Icon name="x" size={10} />
+                </button>
+              </span>
+            {/each}
+          </div>
+          {#if attachmentError}
+            <span class="attachment-error" role="alert">{attachmentError}</span>
+          {/if}
+        </div>
+      {/if}
+
       <!-- Contenu : saisie ou aperçu -->
       <div class="content">
         {#if mode === 'edit'}
           <textarea
             bind:this={contentEl}
             value={note.content}
-            placeholder="Écrivez ici… Markdown pris en charge : # titre, **gras**, *italique*, `code`, ```bloc de code, ==évidence==, listes, [liens](url), ![images](url)."
+            placeholder="Écrivez ici… Markdown pris en charge : # titre, **gras**, *italique*, `code`, ```bloc de code, ==évidence==, listes, [liens](url). Les images s'importent depuis l'ordinateur (bouton « Image »)."
             aria-label="Contenu de la note"
             oninput={(e) => updateSelected({ content: (e.target as HTMLTextAreaElement).value })}
             onblur={() => void flushSave()}
             onkeydown={(e) => {
               if (e.key === 'Tab') {
                 e.preventDefault();
-                insertTab();
+                insertTab(e.shiftKey);
                 return;
               }
               // Gras / italique à la frappe (§3.4) : les raccourcis
@@ -433,6 +670,16 @@
   />
 {/if}
 
+{#if attachmentPendingDelete}
+  <ConfirmDialog
+    title="Supprimer cette pièce jointe ?"
+    message={`« ${attachmentPendingDelete.filename} » sera retirée de la note et de ses sauvegardes. La référence correspondante sera également retirée du texte.`}
+    confirmLabel="Supprimer"
+    onconfirm={() => void removeAttachment()}
+    oncancel={() => (attachmentPendingDelete = null)}
+  />
+{/if}
+
 <style>
   .editor {
     display: flex;
@@ -472,7 +719,7 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .formatting button:hover {
+  .formatting button:not(:disabled):hover {
     background: var(--hover);
     color: var(--text);
   }
@@ -481,8 +728,15 @@
     cursor: default;
   }
 
-  /* L'entrée de fichier est déclenchée par le bouton « Joindre » :
-     elle reste dans le DOM (accessibilité) mais invisible. */
+  .preview-hint {
+    margin-left: 0.5rem;
+    color: var(--text-faint);
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* Les entrées de fichier sont déclenchées par les boutons « Image » et
+     « Joindre » : elles restent dans le DOM (accessibilité) mais invisibles. */
   .file-input {
     position: absolute;
     width: 1px;
