@@ -1,5 +1,5 @@
 import type { NoteCoreApi } from './contract';
-import type { Folder, Note, NotePatch, SearchHit } from './types';
+import type { Folder, MasteryRow, Note, NotePatch, ReviewCard, SearchHit } from './types';
 
 /**
  * Implémentation en mémoire du contrat NoteCoreApi.
@@ -237,6 +237,100 @@ compta.ajoute(5); // this === compta
 
 const seed = buildSeed();
 
+// --- révision (substitut en mémoire : analyse simplifiée, planification naïve) ---
+
+interface MockCard {
+  id: string;
+  noteId: string;
+  key: string;
+  kind: 'cloze' | 'qa';
+  front: string;
+  back: string;
+  state: number;
+  reps: number;
+  due: number;
+  last: number | null;
+  log: Array<{ at: number; prev: Pick<MockCard, 'state' | 'reps' | 'due' | 'last'> & { id: string } }>;
+}
+const mockCards: MockCard[] = [];
+const mockLog: MockCard['log'] = [];
+const mockReview = { newPerDay: 20, retention: 0.9 };
+
+function deriveCards(noteId: string, content: string): void {
+  const found = new Map<string, { kind: 'cloze' | 'qa'; front: string; back: string }>();
+  for (const line of content.split('\n')) {
+    const re = /\{\{c(\d+)::(.+?)(?:::(.+?))?\}\}/g;
+    const ns = new Set([...line.matchAll(re)].map((m) => m[1]));
+    for (const n of ns) {
+      found.set(`c${n}`, {
+        kind: 'cloze',
+        front: line.replace(re, (_m, k, a, h) => (k === n ? (h ? `[${h}]` : '[…]') : a)),
+        back: line.replace(re, (_m, k, a) => (k === n ? `==${a}==` : a))
+      });
+    }
+    const qa = !ns.size && line.match(/^(?:[-*+]\s+)?(.*?\S) :: (\S.*)$/);
+    if (qa) found.set(`q:${qa[1].toLowerCase()}`, { kind: 'qa', front: qa[1], back: qa[2] });
+  }
+  for (const [key, d] of found) {
+    const ex = mockCards.find((c) => c.noteId === noteId && c.key === key);
+    if (ex) Object.assign(ex, d);
+    else
+      mockCards.push({ id: newId('card'), noteId, key, ...d, state: 0, reps: 0, due: Date.now(), last: null, log: [] });
+  }
+  for (let i = mockCards.length - 1; i >= 0; i--) {
+    if (mockCards[i].noteId === noteId && !found.has(mockCards[i].key)) mockCards.splice(i, 1);
+  }
+}
+
+const humanizeMs = (ms: number): string =>
+  ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))} min` : ms < 86_400_000 ? `${Math.round(ms / 3_600_000)} h` : `${Math.round(ms / 86_400_000)} j`;
+
+function intervalFor(c: MockCard, rating: 1 | 2 | 3 | 4): number {
+  if (rating === 1) return 10 * 60_000;
+  const days = [0, 0, 1, 3, 7][rating] * Math.pow(2, c.reps);
+  return Math.max(rating === 2 ? 20 * 3_600_000 : 86_400_000, days * 86_400_000);
+}
+
+function cardView(c: MockCard): ReviewCard {
+  const note = seed.notes.find((n) => n.id === c.noteId);
+  return {
+    id: c.id,
+    noteId: c.noteId,
+    noteTitle: note?.title ?? '',
+    kind: c.kind,
+    front: c.front,
+    back: c.back,
+    state: c.state,
+    reps: c.reps,
+    intervals: {
+      again: humanizeMs(intervalFor(c, 1)),
+      hard: humanizeMs(intervalFor(c, 2)),
+      good: humanizeMs(intervalFor(c, 3)),
+      easy: humanizeMs(intervalFor(c, 4))
+    }
+  };
+}
+
+const eod = () => new Date(new Date().setHours(24, 0, 0, 0)).getTime();
+
+// Quelques cartes d'exemple, écrites comme le ferait un utilisateur.
+{
+  const extra: Record<string, string> = {
+    Réseaux: '\n\n## À retenir\n- Le modèle {{c1::OSI}} compte {{c2::7}} couches.\n- Quel protocole de transport est fiable ? :: TCP\n- {{c3::UDP::protocole}} privilégie la rapidité.',
+    exploitation: '\n\n## À retenir\nUn {{c1::processus}} possède son propre {{c2::espace d\'adressage}}.\nQuel appel système crée un processus ? :: fork()',
+    SQL: '\n\nUne jointure {{c1::LEFT JOIN}} conserve toutes les lignes de la table de {{c2::gauche}}.'
+  };
+  for (const n of seed.notes) {
+    const hit = Object.keys(extra).find((k) => n.title.includes(k));
+    if (hit) n.content += extra[hit];
+    deriveCards(n.id, n.content);
+  }
+  mockCards.forEach((c, i) => {
+    if (i % 3 === 0) Object.assign(c, { state: 2, reps: 3, due: Date.now() - 3_600_000, last: Date.now() - 4 * 86_400_000 });
+    if (i % 3 === 1) Object.assign(c, { state: 2, reps: 5, due: Date.now() + 5 * 86_400_000, last: Date.now() - 86_400_000 });
+  });
+}
+
 export const mockApi: NoteCoreApi = {
   async listNotes() {
     await delay();
@@ -266,6 +360,7 @@ export const mockApi: NoteCoreApi = {
     const idx = seed.notes.findIndex((n) => n.id === id);
     if (idx === -1) throw new Error('note introuvable');
     seed.notes[idx] = { ...seed.notes[idx], ...patch, updatedAt: minutesAgo(0) };
+    if (patch.content !== undefined) deriveCards(id, patch.content);
     return { ...seed.notes[idx], tags: [...seed.notes[idx].tags] };
   },
 
@@ -419,6 +514,88 @@ export const mockApi: NoteCoreApi = {
     await delay();
     const idx = attachments.findIndex((a) => a.id === id);
     if (idx !== -1) attachments.splice(idx, 1);
+  },
+
+  async reviewStats() {
+    await delay(40);
+    const intro = mockCards.filter((c) => c.state !== 0).length;
+    const due = mockCards.filter((c) => c.state !== 0 && c.due <= eod()).length;
+    const fresh = Math.min(mockCards.filter((c) => c.state === 0).length, Math.max(0, mockReview.newPerDay - 0 * intro));
+    const day = 86_400_000;
+    const activity = Array.from({ length: 14 }, (_v, i) => (i === 13 ? mockLog.length : [0, 3, 8, 0, 12, 5, 9, 14, 0, 6, 11, 7, 10][i] ?? 0));
+    return {
+      due,
+      new: fresh,
+      total: mockCards.length,
+      reviewedToday: mockLog.length,
+      nextDue: due === 0 && mockCards.length ? new Date(Date.now() + day).toISOString() : '',
+      streak: 4,
+      activity
+    };
+  },
+
+  async reviewNext() {
+    await delay(40);
+    const ready = mockCards.filter((c) => c.state !== 0 && c.due <= eod()).sort((a, b) => a.due - b.due)[0];
+    const next = ready ?? mockCards.find((c) => c.state === 0);
+    return next ? cardView(next) : null;
+  },
+
+  async reviewAnswer(cardId, rating) {
+    await delay(40);
+    const c = mockCards.find((x) => x.id === cardId);
+    if (!c) throw new Error('carte introuvable');
+    mockLog.push({ at: Date.now(), prev: { id: c.id, state: c.state, reps: c.reps, due: c.due, last: c.last } });
+    c.due = Date.now() + intervalFor(c, rating);
+    c.state = rating === 1 ? 1 : 2;
+    c.reps += 1;
+    c.last = Date.now();
+  },
+
+  async reviewUndo() {
+    await delay(40);
+    const entry = mockLog.pop();
+    if (!entry) return null;
+    const c = mockCards.find((x) => x.id === entry.prev.id);
+    if (!c) return null;
+    Object.assign(c, entry.prev);
+    return cardView(c);
+  },
+
+  async reviewMastery() {
+    await delay(40);
+    const rows: MasteryRow[] = [];
+    for (const f of seed.folders) {
+      const ids = new Set(seed.notes.filter((n) => n.folderId === f.id).map((n) => n.id));
+      const cs = mockCards.filter((c) => ids.has(c.noteId));
+      if (!cs.length) continue;
+      const learned = cs.filter((c) => c.state !== 0);
+      rows.push({ kind: 'folder', id: f.id, label: f.name, cards: cs.length, learned: learned.length, due: learned.filter((c) => c.due <= eod()).length, retention: learned.length ? 0.86 : 0 });
+    }
+    return rows;
+  },
+
+  async noteCards(noteId) {
+    await delay(20);
+    const cs = mockCards.filter((c) => c.noteId === noteId);
+    return { cards: cs.length, due: cs.filter((c) => c.state !== 0 && c.due <= eod()).length, new: cs.filter((c) => c.state === 0).length };
+  },
+
+  async reviewSettings() {
+    return { ...mockReview };
+  },
+
+  async setReviewSettings(newPerDay, retention) {
+    mockReview.newPerDay = newPerDay;
+    mockReview.retention = retention;
+  },
+
+  async appInfo() {
+    return { os: 'linux', dataDir: '~/.config/NoteCore', databasePath: '~/.config/NoteCore/notecore.db' };
+  },
+
+  async openExternal(url: string) {
+    window.open(url, '_blank', 'noopener,noreferrer');
   },
 
   // L'enregistrement passe par un dialog système : indisponible hors

@@ -55,7 +55,8 @@ export interface SnippetPart {
  * interpréter le contenu comme du HTML.
  */
 export function snippetParts(raw: string, max = 160): SnippetPart[] {
-  const flat = raw.replace(/\s+/g, ' ').trim();
+  // Les marqueurs Markdown n'ont pas de sens dans un extrait lu en liste.
+  const flat = raw.replace(/[#`>*]+/g, '').replace(/\s+/g, ' ').trim();
   if (flat.length > max) return [{ text: `${flat.slice(0, max).trimEnd()}…`, hit: false }];
 
   const parts: SnippetPart[] = [];
@@ -80,4 +81,17 @@ export function excerpt(content: string, max = 90): string {
     .trim();
   if (flat.length <= max) return flat;
   return `${flat.slice(0, max).trimEnd()}…`;
+}
+
+/** « dans 3 heures », « demain » : délai jusqu'à une échéance à venir. */
+export function formatUntil(iso: string): string {
+  const date = new Date(iso);
+  const delta = date.getTime() - Date.now();
+  if (!iso || Number.isNaN(delta)) return '';
+  if (delta < 60_000) return "dans un instant";
+  for (let i = unitsMinutes.length - 1; i >= 0; i--) {
+    const [unit, ms] = unitsMinutes[i];
+    if (delta >= ms) return rtf.format(Math.round(delta / ms), unit);
+  }
+  return "dans un instant";
 }

@@ -104,7 +104,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: oklch(0 0 0 / 0.45);
+    background: var(--scrim);
+    backdrop-filter: blur(3px);
     display: grid;
     place-items: center;
     z-index: 100;

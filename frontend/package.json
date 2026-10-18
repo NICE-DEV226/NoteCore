@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:wails": "vite build && rm -rf ../backend/frontenddist && cp -r dist ../backend/frontenddist",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --experimental-strip-types scripts/test-markdown.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
@@ -20,5 +21,30 @@
   },
   "allowScripts": {
     "esbuild@0.25.12": true
+  },
+  "dependencies": {
+    "@fontsource-variable/caveat": "^5.3.0",
+    "@fontsource-variable/crimson-pro": "^5.3.0",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/eb-garamond": "^5.3.0",
+    "@fontsource-variable/fira-code": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/inconsolata": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/lexend": "^5.3.0",
+    "@fontsource-variable/literata": "^5.3.0",
+    "@fontsource-variable/lora": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource-variable/merriweather": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource-variable/nunito-sans": "^5.3.0",
+    "@fontsource-variable/playfair-display": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource-variable/red-hat-mono": "^5.3.0",
+    "@fontsource-variable/roboto-mono": "^5.3.0",
+    "@fontsource-variable/source-code-pro": "^5.3.1",
+    "@fontsource-variable/source-serif-4": "^5.3.1",
+    "@fontsource-variable/space-grotesk": "^5.3.0"
   }
 }

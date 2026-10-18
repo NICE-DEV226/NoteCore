@@ -93,3 +93,71 @@ export type View =
   | { kind: 'recent' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'tag'; tag: string };
+
+// --- révision espacée (ADR-007) ---------------------------------------------
+
+/** Délais proposés pour chaque réponse, déjà formulés par le backend. */
+export interface ReviewIntervals {
+  again: string;
+  hard: string;
+  good: string;
+  easy: string;
+}
+
+/** Carte à réviser : recto et verso sont du Markdown dérivé de la note. */
+export interface ReviewCard {
+  id: string;
+  noteId: string;
+  noteTitle: string;
+  kind: 'cloze' | 'qa';
+  front: string;
+  back: string;
+  /** 0 nouvelle, 1 apprentissage, 2 révision, 3 ré-apprentissage. */
+  state: number;
+  reps: number;
+  intervals: ReviewIntervals;
+}
+
+export interface ReviewStats {
+  due: number;
+  new: number;
+  total: number;
+  reviewedToday: number;
+  /** Prochaine échéance (RFC 3339) quand rien n'est dû maintenant. */
+  nextDue: string;
+  streak: number;
+  /** Réponses par jour sur 14 jours, du plus ancien au plus récent. */
+  activity: number[];
+}
+
+export interface MasteryRow {
+  kind: 'folder' | 'tag';
+  id: string;
+  label: string;
+  cards: number;
+  learned: number;
+  due: number;
+  /** Probabilité moyenne de se souvenir, de 0 à 1. */
+  retention: number;
+}
+
+export interface NoteCards {
+  cards: number;
+  due: number;
+  new: number;
+}
+
+export interface ReviewSettings {
+  newPerDay: number;
+  retention: number;
+}
+
+/** Note de la réponse donnée à une carte. */
+export type ReviewRating = 1 | 2 | 3 | 4;
+
+/** Où l'application range les données de l'utilisateur (guide de prise en main). */
+export interface AppInfo {
+  os: 'linux' | 'windows' | 'darwin' | string;
+  dataDir: string;
+  databasePath: string;
+}

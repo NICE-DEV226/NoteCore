@@ -91,6 +91,9 @@ jobs:
       - name: Vérifier les types (svelte-check)
         run: npm run check
 
+      - name: Tester le rendu Markdown
+        run: node --experimental-strip-types scripts/test-markdown.ts
+
       - name: Compiler le frontend
         run: npm run build
 

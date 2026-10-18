@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fade } from 'svelte/transition';
-  import logoUrl from './lib/assets/logo.svg';
+  import Brand from './lib/components/Brand.svelte';
   import Workbench from './routes/Workbench.svelte';
   import { initWorkspace, loaded } from './lib/stores/workspace';
   import { watchSystemThemeChanges, loadPreferences } from './lib/stores/appTheme';
   import { loadDisplayPrefs } from './lib/stores/display';
 
   type BootState = 'loading' | 'ready' | 'error';
-  const MIN_SPLASH_MS = 900;
+  // L'ouverture de la base prend quelques millisecondes : aucun délai
+  // artificiel, le splash ne sert que si le chargement est réellement long.
+  const MIN_SPLASH_MS = 0;
 
   let bootState = $state<BootState>('loading');
   let initError = $state<string | null>(null);
@@ -59,7 +61,7 @@
 {:else}
   <main class="splash" aria-busy={bootState === 'loading'}>
     <section class="splash-content" aria-label="NoteCore">
-      <img class="splash-logo" src={logoUrl} alt="Logo NoteCore" />
+      <Brand size={64} stacked />
 
       {#if initError}
         <p class="splash-status splash-status-error" role="alert">{initError}</p>
@@ -73,13 +75,13 @@
 {/if}
 
 <style>
-  /* Splash : fond blanc fixe (le logo est noir), typographie encre */
+  /* Splash : suit le thème ; le logo (trait noir) est inversé en sombre. */
   .splash {
     display: grid;
     place-items: center;
     height: 100vh;
-    background: #ffffff;
-    color: oklch(0.24 0.012 250);
+    background: var(--app-bg);
+    color: var(--text);
   }
 
   .splash-content {
@@ -89,16 +91,10 @@
     text-align: center;
   }
 
-  .splash-logo {
-    width: min(14rem, 72vw);
-    height: auto;
-    max-height: 5.5rem;
-  }
-
   .splash-status {
     max-width: 20rem;
     margin: 1.5rem 0 0;
-    color: oklch(0.6 0.012 250);
+    color: var(--text-faint);
     font-size: 0.9rem;
     line-height: 1.45;
   }
@@ -109,7 +105,7 @@
     margin-top: 1rem;
     overflow: hidden;
     display: block;
-    background: oklch(0.912 0.008 250);
+    background: var(--border);
     border-radius: 999px;
   }
 

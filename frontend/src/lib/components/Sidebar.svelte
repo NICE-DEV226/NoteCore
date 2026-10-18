@@ -1,29 +1,34 @@
 <script lang="ts">
   /**
    * Zone A — Barre latérale (cahier des charges §4.2)
-   * Identité visuelle, création de note, accès aux vues (toutes /
-   * favoris / récentes), dossiers avec suppression sans perte de notes
-   * (§3.2), étiquettes (§3.2), paramètres.
+   * Identité, création de note, recherche (palette), vues, dossiers (suppression
+   * sans perte de notes, §3.2), étiquettes. Les réglages et les opérations sur
+   * les données vivent dans la fenêtre Paramètres.
    */
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
-  import logoUrl from '../assets/logo.svg';
+  import Brand from './Brand.svelte';
   import { tagTint } from '../utils/tags';
   import {
     allTags,
     createFolder,
+    createNote,
+    currentView,
     deleteFolder,
-    renameFolder,
     favoritesCount,
     folderError,
     folders,
+    goHome,
     loaded,
-    currentView,
-    notes
+    notes,
+    renameFolder,
+    restoreBackup,
+    restorePreview,
+    selectedNoteId
   } from '../stores/workspace';
-  import { createNote, exportAllNotes, createBackup, chooseBackupToRestore, restoreBackup, restorePreview } from '../stores/workspace';
+  import { paletteOpen, settingsOpen } from '../stores/ui';
+  import { reviewStats, startReview } from '../stores/review';
   import { theme, setThemePref } from '../stores/appTheme';
-  import { display, setDisplayPref } from '../stores/display';
   import { formatFullDate } from '../utils/format';
   import type { RestorePreview, View } from '../api/types';
 
@@ -36,6 +41,8 @@
   let folderInput = $state<HTMLInputElement | null>(null);
   let folderRenameInput = $state<HTMLInputElement | null>(null);
 
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
   /** Identité de la sauvegarde, présentée avant l'écrasement des données. */
   function describeBackup(preview: RestorePreview): string {
     const parts: string[] = [];
@@ -43,6 +50,15 @@
     if (preview.notes > 0) parts.push(`${preview.notes} note${preview.notes > 1 ? 's' : ''}`);
     return parts.length > 0 ? ` (${parts.join(', ')})` : '';
   }
+
+  /** Nombre de notes par dossier, calculé une fois par changement de liste. */
+  const folderCounts = $derived.by(() => {
+    const counts = new Map<string, number>();
+    for (const n of $notes) {
+      if (n.folderId) counts.set(n.folderId, (counts.get(n.folderId) ?? 0) + 1);
+    }
+    return counts;
+  });
 
   function isActive(view: View, kind: string, arg?: string): boolean {
     if (view.kind === 'folder' && kind === 'folder') return view.folderId === arg;
@@ -98,13 +114,6 @@
     }
   }
 
-  function folderNoteCount(id: string): number {
-    // accès direct au store sans souscription supplémentaire
-    let count = 0;
-    for (const n of $notes) if (n.folderId === id) count++;
-    return count;
-  }
-
   function confirmDeleteFolder() {
     if (folderPendingDelete) void deleteFolder(folderPendingDelete);
     folderPendingDelete = null;
@@ -116,244 +125,213 @@
     { kind: 'recent', icon: 'clock', label: 'Récentes' }
   ] as const;
 
+  function toggleTheme(): void {
+    setThemePref($theme.theme === 'dark' ? 'light' : 'dark');
+  }
 </script>
 
 <aside class="sidebar">
   {#if !$loaded}
     <div class="loading">Chargement…</div>
   {:else}
-    <!-- Identité -->
     <div class="brand">
-      <img class="brand-logo" src={logoUrl} alt="Logo NoteCore" />
+      <Brand size={30} />
     </div>
 
-    <!-- Création -->
-    <button
-      class="new-note"
-      title="Créer une note — Ctrl+N"
-      aria-keyshortcuts="Control+N Meta+N"
-      onclick={() => void createNote($currentView.kind === 'folder' ? $currentView.folderId : null)}
-    >
-      <Icon name="plus" size={15} />
-      Nouvelle note
-    </button>
-
-    <!-- Vues principales -->
-    <nav class="views">
-      {#each viewLabels as item (item.kind)}
-        <button
-          class="view"
-          class:active={isActive($currentView, item.kind)}
-          aria-current={isActive($currentView, item.kind) ? 'page' : undefined}
-          onclick={() => currentView.set({ kind: item.kind })}
-        >
-          <Icon name={item.icon} size={15} />
-          <span class="view-label">{item.label}</span>
-          {#if item.kind === 'favorites'}
-            <span class="count">{$favoritesCount}</span>
-          {:else}
-            <span class="count">{$notes.length}</span>
-          {/if}
-        </button>
-      {/each}
-    </nav>
-
-    <!-- Dossiers -->
-    <div class="section">
-      <div class="section-head">
-        <span class="section-title">Dossiers</span>
-        <button class="mini-btn" title="Nouveau dossier" onclick={startCreateFolder}>
-          <Icon name="plus" size={12} />
-        </button>
-      </div>
-
-      {#if creatingFolder}
-        <input
-          class="folder-input"
-          bind:this={folderInput}
-          bind:value={newFolderName}
-          placeholder="Nom du dossier"
-          onkeydown={(e) => {
-            if (e.key === 'Enter') submitFolder();
-            if (e.key === 'Escape') {
-              creatingFolder = false;
-              newFolderName = '';
-            }
-          }}
-          onblur={submitFolder}
-        />
-      {/if}
-
-      <ul class="list">
-        {#each $folders as folder (folder.id)}
-          <li>
-            {#if editingFolderId === folder.id}
-              <input
-                class="folder-input folder-rename-input"
-                bind:this={folderRenameInput}
-                bind:value={folderEditName}
-                aria-label={`Renommer le dossier ${folder.name}`}
-                onkeydown={(e) => {
-                  if (e.key === 'Enter') void submitRenameFolder();
-                  if (e.key === 'Escape') {
-                    editingFolderId = null;
-                    folderEditName = '';
-                  }
-                }}
-                onblur={() => void submitRenameFolder()}
-              />
-            {:else}
-              <button
-                class="view folder"
-                class:active={isActive($currentView, 'folder', folder.id)}
-                aria-current={isActive($currentView, 'folder', folder.id) ? 'page' : undefined}
-                onclick={() => currentView.set({ kind: 'folder', folderId: folder.id })}
-                ondblclick={() => startRenameFolder(folder.id, folder.name)}
-                title="Cliquer pour ouvrir, double-cliquer pour renommer"
-              >
-                <Icon name="folder" size={15} />
-                <span class="view-label">{folder.name}</span>
-                <span class="count">{folderNoteCount(folder.id)}</span>
-              </button>
-            {/if}
-            <button
-              class="row-trash"
-              title={`Supprimer le dossier « ${folder.name} » (les notes ne seront pas supprimées)`}
-              onclick={() => (folderPendingDelete = folder.id)}
-            >
-              <Icon name="trash" size={13} />
-            </button>
-          </li>
-        {/each}
-        {#if $folders.length === 0 && !creatingFolder}
-          <li class="list-empty">Aucun dossier</li>
-        {/if}
-      </ul>
-
-      {#if $folderError}
-        <p class="folder-error" role="alert">
-          <span>{$folderError}</span>
-          <button
-            class="error-dismiss"
-            title="Masquer le message"
-            aria-label="Masquer le message"
-            onclick={() => folderError.set(null)}
-          >
-            <Icon name="x" size={12} />
-          </button>
-        </p>
-      {/if}
-    </div>
-
-    <!-- Étiquettes -->
-    <div class="section tags-section">
-      <div class="section-head">
-        <span class="section-title">Étiquettes</span>
-      </div>
-      <div class="tag-cloud">
-        {#each $allTags as tag (tag)}
-          <button
-            class="tag-chip tint-{tagTint(tag)}"
-            class:active={isActive($currentView, 'tag', tag)}
-            aria-pressed={isActive($currentView, 'tag', tag)}
-            onclick={() =>
-              currentView.set(isActive($currentView, 'tag', tag) ? { kind: 'all' } : { kind: 'tag', tag })}
-          >
-            {tag}
-          </button>
-        {/each}
-        {#if $allTags.length === 0}
-          <span class="list-empty">Aucune étiquette</span>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Paramètres -->
-    <div class="footer">
-      <div class="transfer-row">
-        <button class="transfer-btn" title="Archiver toutes les notes (.zip + manifeste)" onclick={() => void exportAllNotes()}>
-          <Icon name="download" size={13} />
-          Exporter tout
-        </button>
-        <button class="transfer-btn" title="Sauvegarde complète vérifiable de la base" onclick={() => void createBackup()}>
-          <Icon name="archive" size={13} />
-          Sauvegarde…
-        </button>
-      </div>
-      <button class="restore-btn" title="Restaurer une sauvegarde validée" onclick={() => void chooseBackupToRestore()}>
-        <Icon name="upload" size={13} />
-        Restaurer une sauvegarde
+    <div class="top">
+      <button
+        class="new-note"
+        title="Créer une note — Ctrl+N"
+        aria-keyshortcuts="Control+N Meta+N"
+        onclick={() => void createNote($currentView.kind === 'folder' ? $currentView.folderId : null)}
+      >
+        <Icon name="plus" size={15} stroke={2.2} />
+        Nouvelle note
       </button>
 
-      <!-- Affichage : police, taille, largeur (réglages locaux, §3.6) -->
-      <div class="display-prefs" role="group" aria-label="Affichage de l'éditeur">
-        <select
-          class="pref-select"
-          title="Police d'écriture de l'éditeur"
-          aria-label="Police d'écriture de l'éditeur"
-          value={$display.font}
-          onchange={(e) =>
-            setDisplayPref('font', (e.currentTarget.value as 'serif' | 'sans' | 'mono'))}
+      <button
+        class="finder"
+        title="Rechercher et exécuter des commandes"
+        aria-keyshortcuts="Control+K Meta+K"
+        onclick={() => paletteOpen.set(true)}
+      >
+        <Icon name="search" size={14} />
+        <span>Rechercher…</span>
+        <kbd>{isMac ? '⌘' : 'Ctrl'} K</kbd>
+      </button>
+    </div>
+
+    <div class="scroll">
+      <nav class="nav" aria-label="Navigation">
+        <button
+          class="nav-item"
+          class:active={$selectedNoteId === null}
+          aria-current={$selectedNoteId === null ? 'page' : undefined}
+          onclick={() => void goHome()}
         >
-          <option value="serif">Serif</option>
-          <option value="sans">Sans</option>
-          <option value="mono">Mono</option>
-        </select>
-        <select
-          class="pref-select"
-          title="Taille du texte de l'éditeur"
-          aria-label="Taille du texte de l'éditeur"
-          value={$display.size}
-          onchange={(e) =>
-            setDisplayPref('size', (e.currentTarget.value as 'compact' | 'normal' | 'large'))}
+          <Icon name="home" size={16} />
+          <span class="nav-label">Accueil</span>
+        </button>
+        <button
+          class="nav-item review"
+          title="Lancer une révision"
+          onclick={() => void startReview()}
         >
-          <option value="compact">Petite</option>
-          <option value="normal">Normale</option>
-          <option value="large">Grande</option>
-        </select>
-        <select
-          class="pref-select"
-          title="Largeur de la colonne d'écriture"
-          aria-label="Largeur de la colonne d'écriture"
-          value={$display.width}
-          onchange={(e) =>
-            setDisplayPref('width', (e.currentTarget.value as 'narrow' | 'normal' | 'wide'))}
-        >
-          <option value="narrow">Étroite</option>
-          <option value="normal">Moyenne</option>
-          <option value="wide">Large</option>
-        </select>
+          <Icon name="layers" size={16} />
+          <span class="nav-label">Réviser</span>
+          {#if ($reviewStats?.due ?? 0) + ($reviewStats?.new ?? 0) > 0}
+            <span class="due" aria-label="cartes à voir">{($reviewStats?.due ?? 0) + ($reviewStats?.new ?? 0)}</span>
+          {/if}
+        </button>
+        {#each viewLabels as item (item.kind)}
+          <button
+            class="nav-item"
+            class:active={isActive($currentView, item.kind) && $selectedNoteId !== null}
+            class:current-view={isActive($currentView, item.kind)}
+            aria-current={isActive($currentView, item.kind) ? 'page' : undefined}
+            onclick={() => currentView.set({ kind: item.kind })}
+          >
+            <Icon name={item.icon} size={16} />
+            <span class="nav-label">{item.label}</span>
+            <span class="count">{item.kind === 'favorites' ? $favoritesCount : $notes.length}</span>
+          </button>
+        {/each}
+      </nav>
+
+      <div class="section">
+        <div class="section-head">
+          <span class="section-title">Dossiers</span>
+          <button class="mini-btn" title="Nouveau dossier" aria-label="Nouveau dossier" onclick={startCreateFolder}>
+            <Icon name="plus" size={13} stroke={2.2} />
+          </button>
+        </div>
+
+        {#if creatingFolder}
+          <input
+            class="folder-input"
+            bind:this={folderInput}
+            bind:value={newFolderName}
+            placeholder="Nom du dossier"
+            aria-label="Nom du nouveau dossier"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') submitFolder();
+              if (e.key === 'Escape') {
+                creatingFolder = false;
+                newFolderName = '';
+              }
+            }}
+            onblur={submitFolder}
+          />
+        {/if}
+
+        <ul class="list">
+          {#each $folders as folder (folder.id)}
+            <li class="row">
+              {#if editingFolderId === folder.id}
+                <input
+                  class="folder-input"
+                  bind:this={folderRenameInput}
+                  bind:value={folderEditName}
+                  aria-label={`Renommer le dossier ${folder.name}`}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') void submitRenameFolder();
+                    if (e.key === 'Escape') {
+                      editingFolderId = null;
+                      folderEditName = '';
+                    }
+                  }}
+                  onblur={() => void submitRenameFolder()}
+                />
+              {:else}
+                <button
+                  class="nav-item folder"
+                  class:current-view={isActive($currentView, 'folder', folder.id)}
+                  aria-current={isActive($currentView, 'folder', folder.id) ? 'page' : undefined}
+                  onclick={() => currentView.set({ kind: 'folder', folderId: folder.id })}
+                  ondblclick={() => startRenameFolder(folder.id, folder.name)}
+                  title="Double-clic pour renommer"
+                >
+                  <Icon name="folder" size={16} />
+                  <span class="nav-label">{folder.name}</span>
+                  <span class="count">{folderCounts.get(folder.id) ?? 0}</span>
+                </button>
+                <span class="row-actions">
+                  <button
+                    class="row-btn"
+                    title={`Renommer « ${folder.name} »`}
+                    aria-label={`Renommer le dossier ${folder.name}`}
+                    onclick={() => startRenameFolder(folder.id, folder.name)}
+                  >
+                    <Icon name="edit" size={13} />
+                  </button>
+                  <button
+                    class="row-btn danger"
+                    title={`Supprimer « ${folder.name} » (les notes sont conservées)`}
+                    aria-label={`Supprimer le dossier ${folder.name}`}
+                    onclick={() => (folderPendingDelete = folder.id)}
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </span>
+              {/if}
+            </li>
+          {/each}
+          {#if $folders.length === 0 && !creatingFolder}
+            <li class="list-empty">Aucun dossier</li>
+          {/if}
+        </ul>
+
+        {#if $folderError}
+          <p class="folder-error" role="alert">
+            <span>{$folderError}</span>
+            <button
+              class="error-dismiss"
+              title="Masquer le message"
+              aria-label="Masquer le message"
+              onclick={() => folderError.set(null)}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </p>
+        {/if}
       </div>
 
-      <div class="theme-toggle" role="group" aria-label="Thème">
-        <button
-          class="theme-btn"
-          class:active={$theme.pref === 'light'}
-          aria-pressed={$theme.pref === 'light'}
-          title="Thème clair"
-          onclick={() => setThemePref('light')}
-        >
-          <Icon name="sun" size={14} />
-        </button>
-        <button
-          class="theme-btn"
-          class:active={$theme.pref === 'dark'}
-          aria-pressed={$theme.pref === 'dark'}
-          title="Thème sombre"
-          onclick={() => setThemePref('dark')}
-        >
-          <Icon name="moon" size={14} />
-        </button>
-        <button
-          class="theme-btn"
-          class:active={$theme.pref === 'system'}
-          aria-pressed={$theme.pref === 'system'}
-          title="Conformément au système"
-          onclick={() => setThemePref('system')}
-        >
-          <Icon name="monitor" size={14} />
-        </button>
+      <div class="section">
+        <div class="section-head">
+          <span class="section-title">Étiquettes</span>
+        </div>
+        <div class="tag-cloud">
+          {#each $allTags as tag (tag)}
+            <button
+              class="tag-chip tint-{tagTint(tag)}"
+              class:active={isActive($currentView, 'tag', tag)}
+              aria-pressed={isActive($currentView, 'tag', tag)}
+              onclick={() =>
+                currentView.set(isActive($currentView, 'tag', tag) ? { kind: 'all' } : { kind: 'tag', tag })}
+            >
+              {tag}
+            </button>
+          {/each}
+          {#if $allTags.length === 0}
+            <span class="list-empty">Aucune étiquette</span>
+          {/if}
+        </div>
       </div>
+    </div>
+
+    <div class="footer">
+      <button class="footer-btn grow" onclick={() => settingsOpen.set(true)} title="Paramètres — Ctrl+,">
+        <Icon name="settings" size={16} />
+        Paramètres
+      </button>
+      <button
+        class="footer-btn"
+        onclick={toggleTheme}
+        title={$theme.theme === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre'}
+        aria-label="Basculer le thème"
+      >
+        <Icon name={$theme.theme === 'dark' ? 'sun' : 'moon'} size={16} />
+      </button>
     </div>
   {/if}
 </aside>
@@ -382,10 +360,9 @@
   .sidebar {
     display: flex;
     flex-direction: column;
+    min-height: 0;
     background: var(--sidebar-bg);
     border-right: 1px solid var(--border);
-    overflow-y: auto;
-    min-height: 0;
   }
 
   .loading {
@@ -395,23 +372,12 @@
   }
 
   .brand {
-    display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    padding: 1rem 1.1rem 0.8rem;
+    padding: 1.1rem 1.1rem 0.7rem;
   }
-  .brand img {
-    flex-shrink: 0;
-  }
-
-  /* Sur fond clair : trait noir intégral ; en thème sombre, inversion. */
-  .brand-logo {
-    height: 40px;
-    width: auto;
-  }
-  :global([data-theme='dark']) .brand-logo {
-    filter: invert(1);
-    opacity: 0.92;
+  .top {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem 0.7rem;
   }
 
   .new-note {
@@ -419,94 +385,152 @@
     align-items: center;
     justify-content: center;
     gap: 0.45rem;
-    margin: 0.4rem 1rem 0.9rem;
-    padding: 0.55rem 0.9rem;
+    height: 36px;
     border: none;
     border-radius: var(--radius);
     background: var(--accent);
     color: var(--on-accent);
     font: inherit;
     font-size: 0.88rem;
-    font-weight: 550;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s ease;
+    box-shadow: var(--shadow-sm);
+    transition:
+      background 0.12s var(--ease),
+      transform 0.12s var(--ease);
   }
   .new-note:hover {
     background: var(--accent-strong);
   }
-
-  .views,
-  .list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin: 0 0.6rem;
-    padding: 0;
-    list-style: none;
+  .new-note:active {
+    transform: translateY(1px);
   }
 
-  .view {
+  .finder {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.5rem;
+    height: 34px;
+    padding: 0 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--input-bg);
+    color: var(--text-faint);
+    font: inherit;
+    font-size: 0.84rem;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.12s var(--ease);
+  }
+  .finder:hover {
+    border-color: var(--text-faint);
+    color: var(--text-soft);
+  }
+  .finder span {
+    flex: 1;
+  }
+  kbd {
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    font-family: var(--font-ui);
+    font-size: 0.68rem;
+    color: var(--text-faint);
+  }
+
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 0.5rem 0.5rem;
+  }
+
+  .nav {
+    display: grid;
+    gap: 1px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
     width: 100%;
-    padding: 0.45rem 0.6rem;
+    height: var(--nav-h);
+    padding: 0 0.6rem;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--text-soft);
     font: inherit;
-    font-size: 0.86rem;
-    cursor: pointer;
+    font-size: 0.88rem;
     text-align: left;
-    transition: background 0.12s ease, color 0.12s ease;
+    cursor: pointer;
+    transition:
+      background 0.1s var(--ease),
+      color 0.1s var(--ease);
   }
-  .view:hover {
+  .nav-item:hover {
     background: var(--hover);
     color: var(--text);
   }
-  .view.active {
+  .nav-item.active,
+  .nav-item.current-view {
     background: var(--accent-soft);
     color: var(--accent-text);
-    font-weight: 550;
+    font-weight: 600;
   }
-
-  .view-label {
+  /* Une note ouverte : la vue reste indiquée, plus discrètement. */
+  .nav-item.current-view:not(.active) {
+    background: transparent;
+    color: var(--text);
+  }
+  .nav-label {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .count {
-    font-size: 0.7rem;
-    color: var(--text-soft);
-    background: var(--chip-bg);
+  .due {
+    min-width: 1.35rem;
+    padding: 0 0.4rem;
     border-radius: 999px;
-    padding: 0.05rem 0.45rem;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 0.7rem;
+    font-weight: 650;
+    line-height: 1.35rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .count {
+    min-width: 1.4rem;
+    color: var(--text-faint);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .nav-item.active .count {
+    color: var(--accent-text);
   }
 
   .section {
     margin-top: 1.1rem;
-    min-width: 0;
   }
-
   .section-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1.4rem 0.35rem;
+    padding: 0 0.6rem 0.3rem;
   }
-
   .section-title {
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
     color: var(--text-faint);
+    font-size: 0.68rem;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
-
   .mini-btn {
     display: grid;
     place-items: center;
@@ -523,229 +547,154 @@
     color: var(--text);
   }
 
-  li {
-    position: relative;
+  .list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 1px;
   }
-
-  .row-trash {
+  .row {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .row .nav-item {
+    padding-right: 3.4rem;
+  }
+  .row-actions {
     position: absolute;
-    top: 50%;
-    right: 0.45rem;
-    transform: translateY(-50%);
+    right: 0.25rem;
     display: none;
+    gap: 1px;
+  }
+  .row:hover .row-actions,
+  .row:focus-within .row-actions {
+    display: inline-flex;
+  }
+  .row:hover .count,
+  .row:focus-within .count {
+    visibility: hidden;
+  }
+  .row-btn {
+    display: grid;
     place-items: center;
     width: 24px;
     height: 24px;
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: var(--text-faint);
+    color: var(--text-soft);
     cursor: pointer;
   }
-  li:hover .row-trash {
-    display: grid;
+  .row-btn:hover {
+    background: var(--chip-bg);
+    color: var(--text);
   }
-  .row-trash:hover {
+  .row-btn.danger:hover {
     background: var(--danger-soft);
     color: var(--danger);
   }
 
+  .list-empty {
+    padding: 0.2rem 0.6rem;
+    color: var(--text-faint);
+    font-size: 0.8rem;
+  }
+
   .folder-input {
-    margin: 0.2rem 0.6rem 0.4rem;
-    padding: 0.4rem 0.6rem;
+    width: 100%;
+    height: 30px;
+    margin-bottom: 2px;
+    padding: 0 0.6rem;
     border: 1px solid var(--accent);
     border-radius: var(--radius-sm);
     background: var(--surface);
     color: var(--text);
     font: inherit;
-    font-size: 0.85rem;
-    width: calc(100% - 1.2rem);
-    outline: none;
+    font-size: 0.86rem;
+  }
+  .folder-input:focus {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: 0;
   }
 
-  .folder-rename-input {
-    margin: 0.1rem 2rem 0.1rem 0.6rem;
-    width: calc(100% - 2.6rem);
-  }
-
-  .list-empty {
-    padding: 0.15rem 0.85rem;
-    font-size: 0.8rem;
-    color: var(--text-faint);
-  }
-
-  /* Erreur d'une opération sur un dossier : affichée sur place, à côté de
-     la liste concernée, et non dans la barre d'enregistrement de l'éditeur. */
   .folder-error {
     display: flex;
     align-items: flex-start;
+    justify-content: space-between;
     gap: 0.4rem;
-    margin: 0.35rem 0.85rem 0.2rem;
-    padding: 0.4rem 0.55rem;
-    border: 1px solid var(--danger);
+    margin: 0.4rem 0.3rem 0;
+    padding: 0.45rem 0.6rem;
     border-radius: var(--radius-sm);
     background: var(--danger-soft);
     color: var(--danger);
     font-size: 0.78rem;
-    line-height: 1.3;
-  }
-  .folder-error span {
-    min-width: 0;
-    overflow-wrap: anywhere;
+    line-height: 1.4;
   }
   .error-dismiss {
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    padding: 0;
+    width: 20px;
+    height: 20px;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 5px;
     background: transparent;
     color: inherit;
     cursor: pointer;
-  }
-  .error-dismiss:hover {
-    background: var(--hover);
-  }
-
-  .tags-section {
-    flex: 1;
   }
 
   .tag-cloud {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    padding: 0 1.1rem;
+    gap: 0.3rem;
+    padding: 0.15rem 0.6rem 0;
   }
-
   .tag-chip {
-    border: 1px solid var(--tint-line);
+    padding: 0.15rem 0.6rem;
+    border: 1px solid transparent;
     border-radius: 999px;
     background: var(--tint-bg);
     color: var(--tint-ink);
     font: inherit;
     font-size: 0.76rem;
-    padding: 0.22rem 0.7rem;
     cursor: pointer;
-    transition: box-shadow 0.12s ease, border-color 0.12s ease;
+    transition: border-color 0.1s var(--ease);
   }
   .tag-chip:hover {
-    border-color: var(--tint-ink);
+    border-color: var(--tint-line);
   }
   .tag-chip.active {
-    background: var(--tint-ink);
     border-color: var(--tint-ink);
-    color: var(--tint-bg);
-    font-weight: 550;
+    font-weight: 600;
   }
 
   .footer {
-    margin-top: auto;
-    padding: 0.8rem 1rem;
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.6rem 0.5rem;
     border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
   }
-
-  /* Export multi-notes et sauvegarde (cahier des charges §3.7). */
-  .transfer-row {
-    display: flex;
-    gap: 0.4rem;
-  }
-  .transfer-btn {
-    flex: 1;
+  .footer-btn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.3rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-soft);
-    font: inherit;
-    font-size: 0.76rem;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  .transfer-btn:hover {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  .restore-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.3rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-soft);
-    font: inherit;
-    font-size: 0.76rem;
-    cursor: pointer;
-  }
-  .restore-btn:hover {
-    background: var(--hover);
-    color: var(--text);
-  }
-
-  .theme-toggle {
-    display: flex;
-    gap: 2px;
-    background: var(--chip-bg);
-    border-radius: var(--radius);
-    padding: 3px;
-  }
-
-  .theme-btn {
-    flex: 1;
-    display: grid;
-    place-items: center;
-    padding: 0.35rem;
+    gap: 0.6rem;
+    height: 32px;
+    padding: 0 0.6rem;
     border: none;
-    border-radius: calc(var(--radius) - 3px);
-    background: transparent;
-    color: var(--text-faint);
-    cursor: pointer;
-  }
-  .theme-btn:hover {
-    color: var(--text);
-  }
-  .theme-btn.active {
-    background: var(--surface);
-    color: var(--accent-text);
-    box-shadow: var(--shadow-sm);
-  }
-
-  /* Préférences d'affichage : trois sélecteurs compacts (§3.6). */
-  .display-prefs {
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .pref-select {
-    flex: 1;
-    min-width: 0;
-    padding: 0.32rem 0.4rem;
-    border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    background: var(--surface);
+    background: transparent;
     color: var(--text-soft);
     font: inherit;
-    font-size: 0.74rem;
+    font-size: 0.86rem;
     cursor: pointer;
   }
-  .pref-select:hover {
+  .footer-btn.grow {
+    flex: 1;
+  }
+  .footer-btn:hover {
+    background: var(--hover);
     color: var(--text);
-    border-color: var(--accent);
   }
 </style>

@@ -36,6 +36,31 @@ const checks = [
   ['XSS neutralisé', !/<script/i.test(html) && html.includes('&lt;script&gt;')]
 ];
 
+const md = renderMarkdown;
+const more: [string, boolean][] = [
+  ['code non retraité', md('`**x** [a](https://b.c)`') === '<p><code class="md-inline">**x** [a](https://b.c)</code></p>'],
+  ['backtick isolé littéral', !md('`a et b').includes('<code')],
+  ['gras contenant italique', md('**a *b* c**').includes('<strong>a <em>b</em> c</strong>')],
+  ['lien avec parenthèses', md('[a](https://x.com/a_(b))').includes('href="https://x.com/a_(b)"')],
+  ['esperluette dans une URL', md('[a](https://x.com/?a=1&b=2)').includes('href="https://x.com/?a=1&amp;b=2"')],
+  ['injection par attribut neutralisée', !/onmouseover=[^&]/.test(md('[x](https://a.com/"onmouseover="alert(1))'))],
+  ['javascript: refusé', !md('[x](javascript:alert(1))').includes('href')],
+  ['liste imbriquée', /<ol>\s*<li>a<ul><li>b<\/li><\/ul><\/li><\/ol>/.test(md('1. a\n   - b'))],
+  ['numérotation continue', (md('1. a\n\n2. b').match(/<ol/g) ?? []).length === 1],
+  ['départ de liste', md('3. a\n4. b').includes('<ol start="3">')],
+  ['tableau', md('| a | b |\n|---|:-:|\n| 1 | 2 |').includes('<th>a</th><th style="text-align:center">b</th>')],
+  ['citation multi-lignes', md('> a\n> b').startsWith('<blockquote><p>a<br>b</p></blockquote>')],
+  ['citation contenant une liste', md('> - a').includes('<blockquote><ul><li>a</li></ul></blockquote>')],
+  ['bloc de code non fermé', md('```\nx').includes('<pre><code>x</code></pre>')],
+  ['balise HTML échappée', md('<img src=x onerror=alert(1)>').includes('&lt;img')],
+  ['trou de révision', md('Le {{c1::noyau}} gère').includes('<span class="md-cloze" title="Carte c1">noyau</span>')],
+  ['trou avec indice et gras', md('{{c2::**fork**::appel}}').includes('title="Carte c2 — indice : appel"><strong>fork</strong></span>')],
+  ['trou non fermé laissé tel quel', !md('{{c1::sans fin').includes('md-cloze')],
+  ['trou dans du code ignoré', !md('`{{c1::x}}`').includes('md-cloze')],
+  ['pièce jointe', md('![a](attachment:abc-1)').includes('data-attachment="abc-1"')]
+];
+checks.push(...more);
+
 let ok = true;
 for (const [name, pass] of checks) {
   console.log(`${pass ? 'PASS' : 'FAIL'} — ${name}`);

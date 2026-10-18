@@ -1,4 +1,11 @@
 import type {
+  AppInfo,
+  MasteryRow,
+  NoteCards,
+  ReviewCard,
+  ReviewRating,
+  ReviewSettings,
+  ReviewStats,
   Attachment,
   AttachmentData,
   Folder,
@@ -107,4 +114,23 @@ export interface NoteCoreApi {
   deleteAttachment(id: string): Promise<void>;
   /** Enregistre une pièce jointe sur le disque (fichiers non-images). */
   saveAttachment(id: string): Promise<boolean>;
+
+  /** Système et dossier des données, pour le guide de prise en main. */
+  appInfo(): Promise<AppInfo>;
+
+  /** Ouvre une adresse http(s) ou mailto dans le navigateur du système. */
+  openExternal(url: string): Promise<void>;
+
+  // --- révision espacée (ADR-007) ---
+
+  reviewStats(): Promise<ReviewStats>;
+  /** Prochaine carte à réviser, ou null s'il n'y en a plus pour l'instant. */
+  reviewNext(): Promise<ReviewCard | null>;
+  reviewAnswer(cardId: string, rating: ReviewRating): Promise<void>;
+  /** Annule la dernière réponse ; renvoie la carte concernée (null si rien à annuler). */
+  reviewUndo(): Promise<ReviewCard | null>;
+  reviewMastery(): Promise<MasteryRow[]>;
+  noteCards(noteId: string): Promise<NoteCards>;
+  reviewSettings(): Promise<ReviewSettings>;
+  setReviewSettings(newPerDay: number, retention: number): Promise<void>;
 }

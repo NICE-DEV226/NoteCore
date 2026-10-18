@@ -7,6 +7,7 @@
 
 import { derived, get, writable } from 'svelte/store';
 import { api } from '../api/client';
+import { refreshReview, scheduleReviewRefresh } from './review';
 import type {
   Folder,
   Note,
@@ -206,7 +207,22 @@ function scheduleSave(id: string, patch: NotePatch): void {
   saveTimer = setTimeout(() => void performSave(), AUTOSAVE_DELAY_MS);
 }
 
-async function performSave(): Promise<void> {
+/**
+ * Les écritures sont jouées l'une après l'autre. Chaque appel du pont Wails
+ * s'exécute dans sa propre goroutine : deux `updateNote` simultanés pourraient
+ * être validés dans le désordre, et l'ancien état écraserait le plus récent.
+ * Chaque écriture relit `pendingPatch` à son tour, donc la dernière saisie
+ * l'emporte toujours.
+ */
+let saveChain: Promise<void> = Promise.resolve();
+
+function performSave(): Promise<void> {
+  const run = saveChain.then(writePending);
+  saveChain = run.catch(() => undefined);
+  return run;
+}
+
+async function writePending(): Promise<void> {
   const current = pendingPatch;
   if (!current) return;
   const { id, patch } = current;
@@ -233,6 +249,8 @@ async function performSave(): Promise<void> {
     // lui aussi potentiellement périmé — on relance si une requête
     // est active (CDC §3.3 : résultats toujours justes).
     if (get(searchQuery).trim()) scheduleSearch(50);
+    // Les cartes de révision suivent le texte de la note (ADR-007).
+    scheduleReviewRefresh();
   } catch {
     saveState.set('error');
     // Le patch est conservé pour que « Réessayer » rejoue réellement
@@ -264,6 +282,7 @@ export async function initWorkspace(): Promise<void> {
   notes.set(loadedNotes ?? []);
   folders.set(loadedFolders ?? []);
   loaded.set(true);
+  void refreshReview();
 
   if (safetyCopy) {
     notifyTransfer(
@@ -280,6 +299,12 @@ export async function initWorkspace(): Promise<void> {
   window.addEventListener('beforeunload', handleBeforeUnload);
   window.addEventListener('pagehide', handlePageHide);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+}
+
+/** Retourne à l'accueil : aucune note ouverte, modifications d'abord écrites. */
+export async function goHome(): Promise<void> {
+  await flushSave();
+  selectedNoteId.set(null);
 }
 
 /** Sélectionne une note en forçant d'abord l'écriture des modifications en attente. */

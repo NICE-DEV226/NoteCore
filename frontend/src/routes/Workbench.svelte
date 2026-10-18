@@ -10,25 +10,31 @@
   import EditorPane from '../lib/components/EditorPane.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import { fly } from 'svelte/transition';
+  import SettingsDialog from '../lib/components/SettingsDialog.svelte';
+  import CommandPalette from '../lib/components/CommandPalette.svelte';
+  import ReviewSession from '../lib/components/ReviewSession.svelte';
+  import Guide from '../lib/components/Guide.svelte';
+  import { onMount } from 'svelte';
+  import { guideOpen, initGuide } from '../lib/stores/guide';
+  import { reviewOpen } from '../lib/stores/review';
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
-  import { SEARCH_INPUT_ID } from '../lib/constants';
-
-  function focusSearch(): void {
-    const input = document.getElementById(SEARCH_INPUT_ID);
-    if (input instanceof HTMLInputElement) {
-      input.focus();
-      input.select();
-    }
-  }
+  import { focusMode, paletteOpen, settingsOpen } from '../lib/stores/ui';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
-   * jamais gêner la frappe : N (nouvelle note), K (rechercher), S
-   * (enregistrer). Un raccourci sans modificateur reste réservé au texte.
+   * jamais gêner la frappe : N (nouvelle note), K (palette de recherche),
+   * S (enregistrer), \\ (concentration), « , » (paramètres). Un raccourci
+   * sans modificateur reste réservé au texte.
    */
+  // Premier lancement : le guide s'ouvre une fois, puis reste rouvrable.
+  onMount(() => {
+    void initGuide();
+  });
+
   function handleShortcut(event: KeyboardEvent): void {
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-    // Une boîte modale ouverte capture l'attention : on lui laisse la main.
+    // Une boîte modale ouverte capture l'attention : on lui laisse la main
+    // (la palette referme elle-même sur Ctrl+K).
     if (document.querySelector('[aria-modal="true"]')) return;
     switch (event.key.toLowerCase()) {
       case 'n':
@@ -37,7 +43,15 @@
         break;
       case 'k':
         event.preventDefault();
-        focusSearch();
+        paletteOpen.set(true);
+        break;
+      case '\\':
+        event.preventDefault();
+        focusMode.update((v) => !v);
+        break;
+      case ',':
+        event.preventDefault();
+        settingsOpen.set(true);
         break;
       case 's':
         event.preventDefault();
@@ -49,11 +63,34 @@
 
 <svelte:window onkeydown={handleShortcut} />
 
-<main class="workbench">
+<main class="workbench" class:focus={$focusMode}>
   <Sidebar />
   <NoteList />
   <EditorPane />
 </main>
+
+{#if $focusMode}
+  <button class="leave-focus" onclick={() => focusMode.set(false)} title="Quitter le mode concentration — Ctrl+\\">
+    <Icon name="panel-left" size={14} />
+    Quitter la concentration
+  </button>
+{/if}
+
+{#if $paletteOpen}
+  <CommandPalette />
+{/if}
+
+{#if $settingsOpen}
+  <SettingsDialog />
+{/if}
+
+{#if $reviewOpen}
+  <ReviewSession />
+{/if}
+
+{#if $guideOpen}
+  <Guide />
+{/if}
 
 {#if $transferNotice}
   <div
@@ -70,19 +107,51 @@
 <style>
   .workbench {
     display: grid;
-    grid-template-columns: 240px minmax(240px, 320px) 1fr;
+    grid-template-columns: 248px minmax(260px, 330px) 1fr;
     height: 100vh;
     overflow: hidden;
   }
 
-  /* Fenêtres étroites : la liste prend l'espace, l'éditeur se replie
+  /* Concentration : seule la zone d'écriture reste visible. */
+  .workbench.focus {
+    grid-template-columns: 1fr;
+  }
+  .workbench.focus > :global(aside.sidebar),
+  .workbench.focus > :global(section.note-list) {
+    display: none;
+  }
+
+  .leave-focus {
+    position: fixed;
+    top: 0.6rem;
+    left: 0.8rem;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-soft);
+    font: inherit;
+    font-size: 0.76rem;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s var(--ease);
+  }
+  .leave-focus:hover,
+  .leave-focus:focus-visible {
+    opacity: 1;
+    color: var(--text);
+  }
+
+  /* Fenêtres étroites (demi-écran, mosaïque) : les colonnes latérales se
+     resserrent, l'éditeur reste toujours visible et éditable
      (§3.6 « interface adaptée aux tailles de fenêtre courantes »). */
   @media (max-width: 900px) {
     .workbench {
-      grid-template-columns: 210px 1fr;
-    }
-    .workbench > :global(section.editor) {
-      display: none;
+      grid-template-columns: 200px minmax(200px, 250px) 1fr;
     }
   }
 
@@ -102,7 +171,7 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow-lg);
     color: var(--text);
-    font-size: 0.82rem;
+    font-size: 0.84rem;
   }
   .notice :global(svg) {
     color: var(--success);

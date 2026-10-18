@@ -1,6 +1,21 @@
 import type { NoteCoreApi } from './contract';
 import { mockApi } from './mock';
-import type { Attachment, AttachmentData, Folder, Note, NotePatch, RestorePreview, SearchHit } from './types';
+import type {
+  AppInfo,
+  Attachment,
+  AttachmentData,
+  Folder,
+  MasteryRow,
+  Note,
+  NoteCards,
+  NotePatch,
+  RestorePreview,
+  ReviewCard,
+  ReviewRating,
+  ReviewSettings,
+  ReviewStats,
+  SearchHit
+} from './types';
 
 /**
  * Point d'accès unique de l'interface au backend (ARCHITECTURE.md §2).
@@ -17,7 +32,10 @@ import type { Attachment, AttachmentData, Folder, Note, NotePatch, RestorePrevie
 declare global {
   // injecté par le runtime Wails quand le backend Go est branché
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  interface Window { go?: Record<string, any> }
+  interface Window {
+    go?: Record<string, any>;
+    runtime?: { BrowserOpenURL(url: string): void };
+  }
 }
 
 type Transport = Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -41,7 +59,7 @@ function discoverWailsTransport(): Transport | null {
   }
   return null;
 }
-
+// wails warrper function for api contrat by svelte
 class WailsAdapter implements NoteCoreApi {
   private readonly svc: Transport;
 
@@ -100,7 +118,7 @@ class WailsAdapter implements NoteCoreApi {
   async deleteNote(id: string): Promise<void> {
     await this.svc.DeleteNote(id);
   }
-
+// FUNCTION asyncrhone for folder creation
   async createFolder(name: string): Promise<Folder> {
     return (await this.svc.CreateFolder(name)) as Folder;
   }
@@ -192,12 +210,81 @@ class WailsAdapter implements NoteCoreApi {
   async saveAttachment(id: string): Promise<boolean> {
     return (await this.svc.SaveAttachment(id)) as boolean;
   }
+
+  async appInfo(): Promise<AppInfo> {
+    return ((await this.svc.AppInfo()) as AppInfo | null) ?? { os: '', dataDir: '', databasePath: '' };
+  }
+
+  async openExternal(url: string): Promise<void> {
+    // Fourni par le runtime Wails (hors des bindings Go). Sans lui, un lien
+    // remplacerait l'interface dans la fenêtre de l'application.
+    window.runtime?.BrowserOpenURL(url);
+  }
+
+  // --- révision espacée (ADR-007) ---
+
+  async reviewStats(): Promise<ReviewStats> {
+    const s = (await this.svc.ReviewStats()) as Partial<ReviewStats> | null;
+    return {
+      due: s?.due ?? 0,
+      new: s?.new ?? 0,
+      total: s?.total ?? 0,
+      reviewedToday: s?.reviewedToday ?? 0,
+      nextDue: s?.nextDue ?? '',
+      streak: s?.streak ?? 0,
+      activity: s?.activity ?? []
+    };
+  }
+
+  async reviewNext(): Promise<ReviewCard | null> {
+    return ((await this.svc.ReviewNext()) as ReviewCard | null) ?? null;
+  }
+
+  async reviewAnswer(cardId: string, rating: ReviewRating): Promise<void> {
+    await this.svc.ReviewAnswer(cardId, rating);
+  }
+
+  async reviewUndo(): Promise<ReviewCard | null> {
+    return ((await this.svc.ReviewUndo()) as ReviewCard | null) ?? null;
+  }
+
+  async reviewMastery(): Promise<MasteryRow[]> {
+    return ((await this.svc.ReviewMastery()) as MasteryRow[] | null) ?? [];
+  }
+
+  async noteCards(noteId: string): Promise<NoteCards> {
+    return ((await this.svc.NoteCards(noteId)) as NoteCards | null) ?? { cards: 0, due: 0, new: 0 };
+  }
+
+  async reviewSettings(): Promise<ReviewSettings> {
+    return ((await this.svc.ReviewSettings()) as ReviewSettings | null) ?? { newPerDay: 20, retention: 0.9 };
+  }
+
+  async setReviewSettings(newPerDay: number, retention: number): Promise<void> {
+    await this.svc.SetReviewSettings(newPerDay, retention);
+  }
+}
+
+/**
+ * En production, un pont Wails introuvable est une panne, pas un mode de
+ * repli : afficher des données factices ferait croire à l'utilisateur que
+ * ses notes sont vides. Chaque appel échoue alors avec un message lisible
+ * (écran de démarrage + « Réessayer »).
+ */
+function brokenApi(): NoteCoreApi {
+  const fail = (): never => {
+    throw new Error("Le lien avec l'application est introuvable. Relancez NoteCore.");
+  };
+  return new Proxy({} as NoteCoreApi, {
+    get: () => async () => fail()
+  });
 }
 
 function resolveApi(): NoteCoreApi {
   const transport = discoverWailsTransport();
   if (transport) return new WailsAdapter(transport);
-  return mockApi;
+  // Le mock ne sert qu'au développement dans un navigateur (`npm run dev`).
+  return import.meta.env.DEV ? mockApi : brokenApi();
 }
 
 export const api: NoteCoreApi = resolveApi();

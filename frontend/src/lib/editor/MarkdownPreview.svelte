@@ -34,18 +34,6 @@
     let live = true;
     const created: string[] = [];
 
-    // Un lien de pièce jointe ne navigue pas : il enregistre le fichier.
-    // Écoute déléguée : le contenu injecté n'est pas connu de Svelte.
-    const onClick = (event: MouseEvent): void => {
-      const target = event.target as HTMLElement | null;
-      const link = target?.closest('a[data-attachment]') as HTMLAnchorElement | null;
-      if (!link) return;
-      event.preventDefault();
-      const id = link.dataset.attachment;
-      if (id) void api.saveAttachment(id);
-    };
-    root.addEventListener('click', onClick);
-
     root.querySelectorAll<HTMLImageElement>('img[data-attachment]').forEach((img) => {
       const id = img.dataset.attachment;
       if (!id) return;
@@ -68,7 +56,6 @@
 
     return () => {
       live = false;
-      root.removeEventListener('click', onClick);
       for (const url of created) URL.revokeObjectURL(url);
     };
   });
@@ -84,7 +71,11 @@
   .md-preview {
     font-family: var(--editor-font);
     font-size: calc(var(--editor-font-size) * 1.02);
-    line-height: 1.72;
+    font-weight: var(--editor-weight);
+    letter-spacing: var(--editor-spacing);
+    text-align: var(--editor-align);
+    hyphens: auto;
+    line-height: var(--editor-line-height);
     color: var(--text);
     overflow-wrap: break-word;
   }
@@ -95,7 +86,7 @@
   .md-preview :global(h2),
   .md-preview :global(h3),
   .md-preview :global(h4) {
-    font-family: var(--font-ui);
+    font-family: var(--font-heading);
   }
 
   .md-preview :global(h1) {
@@ -118,7 +109,7 @@
   }
 
   .md-preview :global(p) {
-    margin: 0.55em 0;
+    margin: var(--editor-para) 0;
   }
 
   .md-preview :global(ul),
@@ -170,6 +161,15 @@
     color: inherit;
   }
 
+  /* Trou de révision : la réponse reste lisible dans la note. */
+  .md-preview :global(.md-cloze) {
+    padding: 0 0.25em;
+    border-bottom: 2px dotted var(--accent);
+    border-radius: 3px 3px 0 0;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+
   .md-preview :global(a) {
     color: var(--accent-text);
   }
@@ -202,6 +202,26 @@
     border-radius: var(--radius-sm);
     color: var(--text-faint);
     font-size: 0.85em;
+  }
+
+  .md-preview :global(table) {
+    border-collapse: collapse;
+    margin: 0.8em 0;
+    max-width: 100%;
+    display: block;
+    overflow-x: auto;
+    font-size: 0.92em;
+  }
+  .md-preview :global(th),
+  .md-preview :global(td) {
+    border: 1px solid var(--border);
+    padding: 0.35em 0.7em;
+    text-align: left;
+  }
+  .md-preview :global(th) {
+    background: var(--code-bg);
+    font-family: var(--font-ui);
+    font-weight: 600;
   }
 
   .md-preview :global(hr) {
