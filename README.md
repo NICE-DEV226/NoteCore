@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img alt="NoteCore" src="docs/assets/logo.svg" width="340">
+  </picture>
+</p>
+
 # NoteCore
 
 [![CI](https://github.com/NICE-DEV226/NoteCore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NICE-DEV226/NoteCore/actions/workflows/ci.yml)
@@ -97,13 +104,13 @@ NoteCore s'affiche avec le runtime **WebView2** (déjà présent sous Windows 11
 
 | Distribution | Commande |
 | --- | --- |
-| Arch, Manjaro (AUR) | `yay -S notecore` ou `paru -S notecore` |
+| Arch, Manjaro | `git clone https://github.com/NICE-DEV226/NoteCore && cd NoteCore/packaging/aur && makepkg -si` (compile depuis la version publiée), ou l'archive ci-dessous |
 | Debian, Ubuntu et dérivés (22.04+) | `sudo apt install ./notecore-<version>-linux-amd64.deb` |
 | Toutes les autres | `tar xzf notecore-<version>-linux-x64.tar.gz && cd notecore-<version>-linux-x64 && ./install.sh` |
 
 `install.sh` installe **pour l'utilisateur courant**, sans `sudo`, dans `~/.local` ; `./install.sh --system` installe pour tous (`/usr/local`) et `./install.sh --uninstall` désinstalle. Il vérifie d'abord la présence de **WebKitGTK 4.1** et de **GTK 3** et, s'ils manquent, affiche la commande exacte pour votre distribution (pacman, apt, dnf, zypper).
 
-Désinstaller : `sudo apt remove notecore` (deb), `sudo pacman -R notecore` (Arch), `./install.sh --uninstall` (archive).
+Désinstaller : `sudo apt remove notecore` (deb), `sudo pacman -R notecore` (Arch, paquet construit avec `makepkg`), `./install.sh --uninstall` (archive).
 
 ### À partir des sources
 

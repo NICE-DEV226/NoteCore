@@ -94,12 +94,13 @@ Deux points à connaître :
   depuis `assets/notecore.png`) — fichier suivi par git, contrairement
   aux sorties de `build/bin/`.
 
-L'intégration continue (`windows.yml`) produit cet exécutable à chaque
+L'intégration continue (`release.yml`) produit cet exécutable à chaque
 push sur `main` et l'attache à un release GitHub sur étiquette `v*`.
 
-## Paquet Arch (AUR)
+## Paquet Arch
 
-Le `PKGBUILD` est versionné dans `packaging/aur/PKGBUILD`. Il construit
+Le projet n'est pas publié sur l'AUR (pas de compte de mainteneur) : le
+`PKGBUILD` se construit depuis le dépôt. Il est versionné dans `packaging/aur/PKGBUILD`. Il construit
 le paquet sans CLI Wails :
 
 - `prepare()` récupère les dépendances Go (`go mod download`) et npm
@@ -132,7 +133,6 @@ Installation et test locaux :
 ```bash
 cd packaging/aur
 makepkg -si        # -i installe, nécessite sudo pour les dépendances
-yay -S notecore    # une fois publié sur l'AUR
 ```
 
 L'icône installée est `backend/assets/notecore.png` (256×256) dans
@@ -174,13 +174,14 @@ CGO_ENABLED=0 $(go env GOPATH)/bin/wails build -platform windows/amd64 -clean -n
 - La désinstallation retire le programme et le cache WebView2, **jamais**
   `%APPDATA%\NoteCore` (les notes).
 
-### Linux : archive, .deb, AUR
+### Linux : archive, .deb, paquet Arch
 
 - **Archive** : binaire + `install.sh` + `notecore.desktop` + icône + metainfo
   (`packaging/linux/install.sh`). Installation utilisateur sans `sudo`.
 - **.deb** : `VERSION=0.2.0 nfpm package -p deb -f packaging/nfpm.yaml -t dist/`
   (nfpm : `go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3`).
   Dépend de `libgtk-3-0` et `libwebkit2gtk-4.1-0`.
-- **AUR** : `packaging/aur/PKGBUILD`. Après toute modification :
+- **Arch** : `packaging/aur/PKGBUILD` (le projet n'est pas publié sur l'AUR ; le
+  fichier se construit depuis le dépôt avec `makepkg -si`). Après toute modification :
   `cd packaging/aur && makepkg --printsrcinfo > .SRCINFO`. À chaque nouvelle
   version, mettre à jour `pkgver` et `sha256sums` (`updpkgsums`).

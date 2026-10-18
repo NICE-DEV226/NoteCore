@@ -159,6 +159,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Récupérer le code (notes de version)
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: docs/release-notes
+          sparse-checkout-cone-mode: true
+
       - name: Récupérer les livrables
         uses: actions/download-artifact@v8
         with:
@@ -174,11 +180,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        # Ce job ne copie pas le dépôt : gh doit connaître explicitement le dépôt.
+        # Les notes de version sont celles du dépôt (docs/release-notes/<tag>.md) ;
+        # à défaut, GitHub génère la liste des changements.
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
           else
+            if [ -f "docs/release-notes/${TAG}.md" ]; then notes=(--notes-file "docs/release-notes/${TAG}.md")
+            else notes=(--generate-notes); fi
             gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
-              --title "NoteCore $TAG" --generate-notes
+              --title "NoteCore $TAG" "${notes[@]}"
           fi

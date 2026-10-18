@@ -3,7 +3,7 @@
 # en minuscules selon les conventions de l'AUR.
 _pkgname=NoteCore
 pkgname=notecore
-pkgver=0.1.2
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs"
 arch=('x86_64')
@@ -15,7 +15,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
 optdepends=('xdg-utils: ouvrir les liens dans le navigateur')
 makedepends=('go' 'nodejs' 'npm')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('6346b9fccccceab5fd0802fc9cc60b02802dbc316b75a70b5d31511fbba2e8ff')
+sha256sums=('SKIP')
 # `!lto` : LTO n'apporte rien à un binaire Go lié via cgo. `!debug` :
 # inutile ici, le binaire Go ne se débogue pas avec les symboles séparés.
 options=('!lto' '!debug')
