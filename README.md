@@ -10,6 +10,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 
 - [Fonctionnalités](#fonctionnalités)
 - [Architecture](#architecture)
+- [Installer](#installer)
 - [Prérequis](#prérequis)
 - [Construire l'application](#construire-lapplication)
 - [Développement](#développement)
@@ -62,6 +63,27 @@ docs/              Architecture et décisions techniques (ADR)
 ```
 
 SQLite est l'unique source de vérité ; le frontend n'appelle que les méthodes Wails exposées par le backend. Le contenu des notes n'est jamais transformé en format propriétaire : c'est du Markdown, ce qui garantit qu'un export reste lisible sans NoteCore.
+
+## Installer
+
+**Arch Linux (AUR)** — paquet `notecore`, à partir des sources du dépôt :
+
+```bash
+yay -S notecore      # ou : paru -S notecore
+```
+
+**Binaire précompilé** — Linux et Windows, sur la page des [releases](https://github.com/NICE-DEV226/NoteCore/releases) :
+
+```bash
+# Linux
+chmod +x notecore-v0.1.2-linux-x64 && ./notecore-v0.1.2-linux-x64
+```
+
+Sous Windows, l'exécutable requiert le runtime **WebView2** (préinstallé sous Windows 11). Chaque release publie les empreintes SHA-256 des fichiers.
+
+**À partir des sources** — voir [docs/procedure-build.md](docs/procedure-build.md).
+
+Installer une version plus récente conserve vos notes : voir « Vos données » ci-dessous.
 
 ## Prérequis
 

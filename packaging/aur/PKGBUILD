@@ -1,0 +1,76 @@
+# Maintainer: NICE-DEV226 <nicedev226@gmail.com>
+# Nom amont (dépôt GitHub) : distinct du nom du paquet, qui doit rester
+# en minuscules selon les conventions de l'AUR.
+_pkgname=NoteCore
+pkgname=notecore
+pkgver=0.1.2
+pkgrel=1
+pkgdesc="Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs"
+arch=('x86_64')
+url="https://github.com/NICE-DEV226/NoteCore"
+license=('Apache-2.0')
+# `libjavascriptcoregtk-4.1.so` est fourni par webkit2gtk-4.1, sans paquet
+# dédié : lister javascriptcoregtk-4.1 ferait échouer l'installation.
+depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
+makedepends=('go' 'nodejs' 'npm')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('6346b9fccccceab5fd0802fc9cc60b02802dbc316b75a70b5d31511fbba2e8ff')
+# `!lto` : LTO n'apporte rien à un binaire Go lié via cgo. `!debug` :
+# inutile ici, le binaire Go ne se débogue pas avec les symboles séparés.
+options=('!lto' '!debug')
+
+# Préparation hors ligne : les dépendances Go et npm sont récupérées ici,
+# pour que `build()` tourne sans réseau.
+prepare() {
+  cd "$_pkgname-$pkgver"
+
+  # Dépendances Go, verrouillées par go.sum.
+  cd backend
+  go mod download
+  cd ..
+
+  # Dépendances du frontend, verrouillées par package-lock.json.
+  cd frontend
+  npm ci --no-audit --no-fund
+}
+
+build() {
+  cd "$_pkgname-$pkgver"
+
+  # Frontend : `build:wails` lance vite puis copie dist/ dans
+  # backend/frontenddist, que le backend embarque par go:embed.
+  # Aucune CLI Wails n'est nécessaire.
+  (cd frontend && npm run build:wails)
+
+  # Le composant cgo de Wails réclame « webkit2gtk-4.0 » via pkg-config,
+  # alors que le système ne fournit que la série 4.1. On fournit donc un
+  # alias : le fichier .pc de 4.1 copié tel quel, dont le champ Libs
+  # (déjà -lwebkit2gtk-4.1) reste inchangé — seule la résolution du nom
+  # change, jamais la bibliothèque effectivement liée.
+  local pcdir pcsrc
+  pcdir="$(mktemp -d)"
+  pcsrc="$(pkg-config --variable=pcfiledir webkit2gtk-4.1)/webkit2gtk-4.1.pc"
+  cp "$pcsrc" "$pcdir/webkit2gtk-4.0.pc"
+  export PKG_CONFIG_PATH="$pcdir"
+
+  # Reproductibilité (Arch) : les drapeaux C passent au lien C.
+  export CGO_CPPFLAGS="$CPPFLAGS"
+  export CGO_CFLAGS="$CFLAGS"
+  export CGO_CXXFLAGS="$CXXFLAGS"
+  export CGO_LDFLAGS="$LDFLAGS"
+  export GOFLAGS="-trimpath -buildmode=pie -mod=readonly"
+
+  # Les tags `desktop production` sont indispensables : sans eux, Wails
+  # refuse de produire un exécutable et s'arrête sur un avertissement.
+  (cd backend && go build -tags "desktop production" -o notecore .)
+}
+
+package() {
+  cd "$_pkgname-$pkgver"
+
+  install -Dm755 backend/notecore "$pkgdir/usr/bin/notecore"
+  install -Dm644 packaging/notecore.desktop \
+    "$pkgdir/usr/share/applications/notecore.desktop"
+  install -Dm644 backend/assets/notecore.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/notecore.png"
+}

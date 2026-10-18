@@ -97,6 +97,47 @@ Deux points à connaître :
 L'intégration continue (`windows.yml`) produit cet exécutable à chaque
 push sur `main` et l'attache à un release GitHub sur étiquette `v*`.
 
+## Paquet Arch (AUR)
+
+Le `PKGBUILD` est versionné dans `packaging/aur/PKGBUILD`. Il construit
+le paquet sans CLI Wails :
+
+- `prepare()` récupère les dépendances Go (`go mod download`) et npm
+  (`npm ci`), verrouillées par `go.sum` et `package-lock.json`. Le
+  `build()` tourne donc sans réseau.
+- `build()` compile le frontend (`npm run build:wails`, qui copie `dist/`
+  dans `backend/frontenddist`), puis `go build -tags "desktop production"`.
+
+Deux points non évidents, tous deux essentiels :
+
+1. **Le shim `webkit2gtk-4.0`.** Le composant cgo de Wails réclame
+   `webkit2gtk-4.0` par pkg-config, alors que le système ne fournit que la
+   série 4.1 (voir plus haut). `build()` copie donc le `.pc` de 4.1 sous
+   le nom 4.0 dans un répertoire éphémère et l'exporte via
+   `PKG_CONFIG_PATH`. Le champ `Libs` du fichier copié reste inchangé :
+   c'est bien `libwebkit2gtk-4.1` qui est liée. Sans ce shim, la
+   compilation s'arrête sur `Package webkit2gtk-4.0 was not found`.
+   Attention : un cache Go antérieur (alimenté par un shim local) peut
+   masquer le problème lors d'un test manuel — vérifier avec
+   `GOCACHE=$(mktemp -d) go build ...`.
+2. **Les tags.** `go build` sans `-tags "desktop production"` ne refuse
+   pas de compiler : il produit un exécutable qui s'arrête aussitôt avec
+   « Wails applications will not build without the correct build tags ».
+
+Le nom du répertoire extrait est `NoteCore-<version>` (nom amont), d'où la
+variable `_pkgname` — le nom du paquet, lui, reste en minuscules.
+
+Installation et test locaux :
+
+```bash
+cd packaging/aur
+makepkg -si        # -i installe, nécessite sudo pour les dépendances
+yay -S notecore    # une fois publié sur l'AUR
+```
+
+L'icône installée est `backend/assets/notecore.png` (256×256) dans
+`hicolor/256x256`, et le lanceur est `packaging/notecore.desktop`.
+
 ## Développement à chaud
 
 - Backend Go : `go test ./...` couvre migrations, persistance, recherche FTS

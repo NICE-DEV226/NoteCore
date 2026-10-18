@@ -1,0 +1,19 @@
+pkgbase = notecore
+	pkgdesc = Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs
+	pkgver = 0.1.2
+	pkgrel = 1
+	url = https://github.com/NICE-DEV226/NoteCore
+	arch = x86_64
+	license = Apache-2.0
+	makedepends = go
+	makedepends = nodejs
+	makedepends = npm
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	depends = hicolor-icon-theme
+	options = !lto
+	options = !debug
+	source = notecore-0.1.2.tar.gz::https://github.com/NICE-DEV226/NoteCore/archive/refs/tags/v0.1.2.tar.gz
+	sha256sums = 6346b9fccccceab5fd0802fc9cc60b02802dbc316b75a70b5d31511fbba2e8ff
+
+pkgname = notecore
