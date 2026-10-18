@@ -83,7 +83,11 @@ func (n *NoteCore) ExportAllNotes() (bool, error) {
 		}
 	}
 
-	data, err := transfer.ExportAllArchive(list, assetsByNote)
+	folders, err := n.svc.ListFolders(n.callContext())
+	if err != nil {
+		return false, err
+	}
+	data, err := transfer.ExportAllArchive(list, folders, assetsByNote)
 	if err != nil {
 		return false, err
 	}

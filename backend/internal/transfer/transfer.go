@@ -48,21 +48,31 @@ type AttachmentWrite struct {
 
 // ManifestItem décrit une entrée de l'archive d'export.
 type ManifestItem struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	File   string `json:"file"`
-	Folder string `json:"folder,omitempty"`
-	Tags   string `json:"tags,omitempty"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	File  string `json:"file"`
+	// Folder est le NOM du dossier (lisible sans NoteCore) ; FolderID
+	// reste l'identifiant applicatif, stable d'un export à l'autre.
+	Folder   string `json:"folder,omitempty"`
+	FolderID string `json:"folderId,omitempty"`
+	Tags     string `json:"tags,omitempty"`
+}
+
+// ManifestFolder décrit un dossier de l'espace de travail exporté.
+type ManifestFolder struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // Manifest est le contenu de manifest.json — écrit en dernier
 // (le manifeste décrit un état terminé, backend-systems).
 type Manifest struct {
-	Format    string         `json:"format"`
-	Version   int            `json:"version"`
-	CreatedAt string         `json:"createdAt"`
-	Count     int            `json:"count"`
-	Items     []ManifestItem `json:"items"`
+	Format    string           `json:"format"`
+	Version   int              `json:"version"`
+	CreatedAt string           `json:"createdAt"`
+	Count     int              `json:"count"`
+	Folders   []ManifestFolder `json:"folders,omitempty"`
+	Items     []ManifestItem   `json:"items"`
 }
 
 // ExportNoteMarkdown rend une note en Markdown autonome et portable :
@@ -73,14 +83,66 @@ type Manifest struct {
 func ExportNoteMarkdown(n notes.Note, refs map[string]string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "title: %s\n", n.Title)
+	fmt.Fprintf(&b, "title: %s\n", yamlScalar(n.Title))
 	if len(n.Tags) > 0 {
-		fmt.Fprintf(&b, "tags: %s\n", strings.Join(n.Tags, ", "))
+		quoted := make([]string, len(n.Tags))
+		for i, t := range n.Tags {
+			quoted[i] = yamlScalar(t)
+		}
+		fmt.Fprintf(&b, "tags: [%s]\n", strings.Join(quoted, ", "))
 	}
 	fmt.Fprintf(&b, "created: %s\nupdated: %s\n---\n\n", n.CreatedAt, n.UpdatedAt)
 	b.WriteString(rewriteAttachmentRefs(n.Content, refs))
 	b.WriteString("\n")
 	return b.String()
+}
+
+// yamlScalar rend une chaîne sûre dans un en-tête YAML, y compris dans une
+// liste en ligne : laissée telle quelle quand elle est lisible en clair,
+// sinon entre guillemets (une chaîne JSON est un scalaire YAML valide).
+func yamlScalar(s string) string {
+	if yamlNeedsQuotes(s) {
+		raw, _ := json.Marshal(s)
+		return string(raw)
+	}
+	return s
+}
+
+func yamlNeedsQuotes(s string) bool {
+	if s == "" || s != strings.TrimSpace(s) {
+		return true
+	}
+	if strings.ContainsAny(s[:1], "-?:,[]{}#&*!|>'\"%@`") {
+		return true
+	}
+	if strings.ContainsAny(s, ",[]{}") || strings.Contains(s, ": ") || strings.Contains(s, " #") ||
+		strings.HasSuffix(s, ":") {
+		return true
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return true
+		}
+	}
+	switch strings.ToLower(s) {
+	case "true", "false", "yes", "no", "on", "off", "null", "~":
+		return true
+	}
+	return false
+}
+
+// uniqueName renvoie base, ou base-2, base-3… si le nom est déjà pris. La
+// comparaison ignore la casse (systèmes de fichiers insensibles) et
+// l'extension est conservée. Le nom retenu est enregistré dans used.
+func uniqueName(used map[string]bool, base string) string {
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	name := base
+	for i := 2; used[strings.ToLower(name)]; i++ {
+		name = fmt.Sprintf("%s-%d%s", stem, i, ext)
+	}
+	used[strings.ToLower(name)] = true
+	return name
 }
 
 // rewriteAttachmentRefs remplace chaque `attachment:<id>` par l'URL
@@ -103,19 +165,19 @@ func rewriteAttachmentRefs(content string, refs map[string]string) string {
 // correspondance id → URL relative. Les noms sont dédoublonnés et rendus
 // sûrs pour une URL Markdown.
 func ExportAttachmentPlan(title string, assets []ExportAsset) ([]AttachmentWrite, map[string]string) {
+	return planAttachments(urlSafeName(SanitizeFilename(title))+"-assets", assets)
+}
+
+// planAttachments répartit les pièces jointes dans le dossier donné.
+func planAttachments(folder string, assets []ExportAsset) ([]AttachmentWrite, map[string]string) {
 	refs := make(map[string]string, len(assets))
 	if len(assets) == 0 {
 		return nil, refs
 	}
-	folder := urlSafeName(SanitizeFilename(title)) + "-assets"
-	seen := make(map[string]int, len(assets))
+	used := make(map[string]bool, len(assets))
 	writes := make([]AttachmentWrite, 0, len(assets))
 	for _, a := range assets {
-		name := urlSafeName(a.Filename)
-		if cnt := seen[name]; cnt > 0 {
-			name = fmt.Sprintf("%s-%d", name, cnt+1)
-		}
-		seen[name]++
+		name := uniqueName(used, urlSafeName(a.Filename))
 		writes = append(writes, AttachmentWrite{Path: folder + "/" + name, Data: a.Data})
 		refs[a.ID] = "./" + folder + "/" + name
 	}
@@ -170,7 +232,7 @@ func SanitizeFilename(title string) string {
 // ExportAllArchive construit le zip multi-notes : notes/*.md
 // dédoublonnées, pièces jointes dans notes/<titre>-assets/, manifeste
 // JSON en dernier (il décrit l'archive complète, jamais l'inverse).
-func ExportAllArchive(list []notes.Note, assetsByNote map[string][]ExportAsset) ([]byte, error) {
+func ExportAllArchive(list []notes.Note, folders []notes.Folder, assetsByNote map[string][]ExportAsset) ([]byte, error) {
 	manifest := Manifest{
 		Format:    FormatExport,
 		Version:   1,
@@ -178,18 +240,25 @@ func ExportAllArchive(list []notes.Note, assetsByNote map[string][]ExportAsset) 
 		Count:     len(list),
 	}
 
+	folderNames := make(map[string]string, len(folders))
+	for _, f := range folders {
+		folderNames[f.ID] = f.Name
+		manifest.Folders = append(manifest.Folders, ManifestFolder{ID: f.ID, Name: f.Name})
+	}
+
 	buf := &bytes.Buffer{}
 	zw := zip.NewWriter(buf)
 
-	seen := make(map[string]int, len(list))
+	// Le dossier de pièces jointes suit le nom FINAL du fichier (dédoublonné),
+	// jamais le titre : deux notes « Sans titre » ne partagent pas de dossier.
+	usedNotes := make(map[string]bool, len(list))
+	usedFolders := make(map[string]bool, len(list))
 	for _, n := range list {
-		name := SanitizeFilename(n.Title)
-		if cnt := seen[name]; cnt > 0 {
-			name = fmt.Sprintf("%s-%d", name, cnt+1)
-		}
-		seen[name]++
+		name := uniqueName(usedNotes, SanitizeFilename(n.Title)+".md")
+		name = strings.TrimSuffix(name, ".md")
+		folderBase := uniqueName(usedFolders, urlSafeName(name)+"-assets")
 
-		writes, refs := ExportAttachmentPlan(n.Title, assetsByNote[n.ID])
+		writes, refs := planAttachments(folderBase, assetsByNote[n.ID])
 
 		entry, err := zw.Create("notes/" + name + ".md")
 		if err != nil {
@@ -209,16 +278,17 @@ func ExportAllArchive(list []notes.Note, assetsByNote map[string][]ExportAsset) 
 			}
 		}
 
-		folder := ""
-		if n.FolderID != nil && *n.FolderID != "" {
-			folder = *n.FolderID
+		var folderID string
+		if n.FolderID != nil {
+			folderID = *n.FolderID
 		}
 		manifest.Items = append(manifest.Items, ManifestItem{
-			ID:     n.ID,
-			Title:  n.Title,
-			File:   name + ".md",
-			Folder: folder,
-			Tags:   strings.Join(n.Tags, ", "),
+			ID:       n.ID,
+			Title:    n.Title,
+			File:     name + ".md",
+			Folder:   folderNames[folderID],
+			FolderID: folderID,
+			Tags:     strings.Join(n.Tags, ", "),
 		})
 	}
 

@@ -198,6 +198,7 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 		return Note{}, err
 	}
 
+	before := n
 	if patch.Title != nil {
 		// Une note nouvellement créée reçoit « Sans titre », mais l'utilisateur
 		// doit pouvoir effacer ce titre puis saisir le sien sans que la réponse
@@ -229,7 +230,11 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 		n.Tags = cleanTags(*patch.Tags)
 	}
 
-	n.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	// La date de modification décrit le contenu : épingler une note ou
+	// rejouer une sauvegarde identique ne la fait pas remonter dans « Récentes ».
+	if contentChanged(before, n) {
+		n.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE notes
@@ -369,6 +374,22 @@ func (s *Service) GetNote(ctx context.Context, id string) (Note, error) {
 
 const tagSeparator = "\x1f" // séparateur interne pour tags_text
 
+// contentChanged dit si la note diffère de son état précédent, hors épinglage.
+func contentChanged(a, b Note) bool {
+	if a.Title != b.Title || a.Content != b.Content || len(a.Tags) != len(b.Tags) {
+		return true
+	}
+	if (a.FolderID == nil) != (b.FolderID == nil) || (a.FolderID != nil && *a.FolderID != *b.FolderID) {
+		return true
+	}
+	for i := range a.Tags {
+		if a.Tags[i] != b.Tags[i] {
+			return true
+		}
+	}
+	return false
+}
+
 func newID() string {
 	// UUID v7 : ordonné dans le temps, généré côté application
 	// (ARCHITECTURE.md §4 : identifiants applicatifs, stables à l'export).
@@ -447,15 +468,20 @@ func collectNotes(rows *sql.Rows) ([]Note, error) {
 
 // ftsExpr construit une requête MATCH sûre : chaque mot est cité pour
 // que les caractères spéciaux FTS de l'utilisateur ne brisent pas la
-// syntaxe du moteur.
+// syntaxe du moteur. Le dernier mot est un préfixe : la recherche se fait
+// pendant la frappe, « arch » doit déjà trouver « architecture ».
 func ftsExpr(query string) (string, error) {
 	tokens := strings.Fields(strings.TrimSpace(query))
 	if len(tokens) == 0 {
 		return "", nil
 	}
 	quoted := make([]string, 0, len(tokens))
-	for _, t := range tokens {
-		quoted = append(quoted, `"`+strings.ReplaceAll(t, `"`, " ")+`"`)
+	for i, t := range tokens {
+		term := `"` + strings.ReplaceAll(t, `"`, " ") + `"`
+		if i == len(tokens)-1 {
+			term += "*"
+		}
+		quoted = append(quoted, term)
 	}
 	return strings.Join(quoted, " "), nil
 }

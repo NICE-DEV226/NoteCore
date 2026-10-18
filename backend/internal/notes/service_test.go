@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/storage"
@@ -400,5 +401,57 @@ func TestRechercheSansDoublonApresEditions(t *testing.T) {
 	}
 	if len(old) != 1 {
 		t.Fatalf("attendu 1 résultat pour le contenu courant, obtenu %d", len(old))
+	}
+}
+
+// Le dernier mot saisi est un préfixe : la recherche fonctionne pendant la frappe.
+func TestRecherchePrefixe(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	n, err := svc.CreateNote(ctx, "Cours", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "Architecture des réseaux"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &body}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"arch", "architecture rés", "ARCH"} {
+		hits, err := svc.SearchNotes(ctx, q)
+		if err != nil || len(hits) != 1 {
+			t.Errorf("recherche %q : %d résultat(s), err=%v", q, len(hits), err)
+		}
+	}
+	if hits, _ := svc.SearchNotes(ctx, "chitecture"); len(hits) != 0 {
+		t.Error("une recherche ne doit pas trouver le milieu d'un mot")
+	}
+}
+
+// Épingler une note ne change pas sa date de modification ; la modifier, si.
+func TestEpinglageConserveLaDateDeModification(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	n, err := svc.CreateNote(ctx, "Note", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1100 * time.Millisecond) // les dates ont la précision de la seconde
+
+	pinned := true
+	got, err := svc.UpdateNote(ctx, n.ID, notes.Patch{IsPinned: &pinned})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedAt != n.UpdatedAt || !got.IsPinned {
+		t.Errorf("épinglage : updatedAt %s → %s", n.UpdatedAt, got.UpdatedAt)
+	}
+
+	body := "nouveau"
+	got, err = svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdatedAt == n.UpdatedAt {
+		t.Error("une modification du contenu doit mettre à jour la date")
 	}
 }

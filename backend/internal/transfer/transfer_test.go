@@ -74,7 +74,7 @@ func TestArchiveExport(t *testing.T) {
 		{ID: "n-2", Title: "Note", Content: "b"},
 		{ID: "n-3", Title: "Instrument", Content: "c"},
 	}
-	data, err := ExportAllArchive(list, nil)
+	data, err := ExportAllArchive(list, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestArchiveAvecPiecesJointes(t *testing.T) {
 	assets := map[string][]ExportAsset{
 		"n-1": {{ID: "aaa-1", Filename: "vue.png", Data: []byte("PNGDATA")}},
 	}
-	data, err := ExportAllArchive(list, assets)
+	data, err := ExportAllArchive(list, nil, assets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,4 +458,82 @@ func readEntry(t *testing.T, zr *zip.Reader, name string) string {
 	}
 	t.Fatalf("entrée %q introuvable", name)
 	return ""
+}
+
+// Deux notes au même titre (« Sans titre » par défaut) ne partagent ni
+// fichier ni dossier de pièces jointes : aucune entrée ne se répète.
+func TestArchiveAssetsDoNotCollide(t *testing.T) {
+	list := []notes.Note{
+		{ID: "a", Title: "Sans titre", Content: "![x](attachment:1)", Tags: []string{}},
+		{ID: "b", Title: "Sans titre", Content: "![x](attachment:2)", Tags: []string{}},
+	}
+	assets := map[string][]ExportAsset{
+		"a": {{ID: "1", Filename: "img.png", Data: []byte("A")}},
+		"b": {{ID: "2", Filename: "img.png", Data: []byte("B")}},
+	}
+	data, err := ExportAllArchive(list, nil, assets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]string{}
+	for _, f := range zr.File {
+		if _, dup := seen[f.Name]; dup {
+			t.Fatalf("entrée dupliquée : %s", f.Name)
+		}
+		rc, _ := f.Open()
+		raw, _ := io.ReadAll(rc)
+		rc.Close()
+		seen[f.Name] = string(raw)
+	}
+	for _, tc := range []struct{ md, want string }{{"notes/Sans titre.md", "A"}, {"notes/Sans titre-2.md", "B"}} {
+		body := seen[tc.md]
+		start := strings.Index(body, "(./")
+		end := strings.Index(body[start:], ")")
+		if start < 0 || end < 0 {
+			t.Fatalf("%s : référence réécrite absente", tc.md)
+		}
+		if got := seen["notes/"+body[start+3:start+end]]; got != tc.want {
+			t.Errorf("%s pointe vers %q, attendu %q", tc.md, got, tc.want)
+		}
+	}
+}
+
+// L'en-tête reste du YAML valide quel que soit le titre.
+func TestFrontMatterQuoting(t *testing.T) {
+	out := ExportNoteMarkdown(notes.Note{Title: "Cours: Go # 1", Tags: []string{"a,b", "ok"}}, nil)
+	for _, want := range []string{`title: "Cours: Go # 1"`, `tags: ["a,b", ok]`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q absent de :\n%s", want, out)
+		}
+	}
+}
+
+// Le manifeste porte le NOM du dossier, pas seulement son identifiant.
+func TestManifestFolderNames(t *testing.T) {
+	fid := "f-1"
+	list := []notes.Note{{ID: "n", Title: "N", FolderID: &fid, Tags: []string{}}}
+	data, err := ExportAllArchive(list, []notes.Folder{{ID: fid, Name: "Cours"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, _ := f.Open()
+		var m Manifest
+		if err := json.NewDecoder(rc).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		if m.Items[0].Folder != "Cours" || len(m.Folders) != 1 {
+			t.Errorf("dossier non exporté par nom : %+v", m)
+		}
+		return
+	}
+	t.Fatal("manifest.json absent")
 }
