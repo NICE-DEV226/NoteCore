@@ -42,8 +42,10 @@ func (n *NoteCore) Startup(ctx context.Context) {
 
 func (n *NoteCore) callContext() context.Context {
 	if n.ctx == nil {
-		// Défensif : le service attend un contexte non nul.
-		return context.Background()
+		// Ne jamais passer context.Background() aux appels runtime Wails :
+		// ils exigent le contexte spécifique fourni par les hooks de cycle
+		// de vie. L'échec est explicite plutôt que silencieusement rejeté.
+		panic("bindings : contexte runtime Wails non initialisé (Startup non appelé)")
 	}
 	return n.ctx
 }
