@@ -34,10 +34,17 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - Raccourcis `Ctrl/Cmd+B` (gras) et `Ctrl/Cmd+I` (italique) dans l'éditeur.
 - Pièces jointes locales : une image ou un fichier se joint à une note, 10 Mio au maximum par pièce jointe.
 
+**Révision**
+
+- Cartes écrites **dans la note** : `{{c1::mot caché}}`, `{{c1::mot::indice}}` ou une ligne `Question :: Réponse`. Pas de seconde copie à synchroniser.
+- Séance au clavier (`Espace`, `1`–`4`, `Z` pour annuler), planifiée par l'algorithme **FSRS**, entièrement local.
+- Accueil : cartes à voir, série de jours, activité sur 14 jours, maîtrise par dossier et par étiquette.
+
 **Confort**
 
 - Thème clair ou sombre, aligné sur le système par défaut.
-- Préférences d'affichage : police (serif, sans, monospace), taille du texte et largeur de colonne. Ces réglages sont **locaux et sans effet sur la note** — le Markdown reste portable.
+- Personnalisation : 23 polices embarquées (interface, texte, titres, code), taille, interligne, graisse, largeur, couleur d'accent, densité, préréglages. Ces réglages sont **locaux et sans effet sur la note** — le Markdown reste portable.
+- Palette de commandes (`Ctrl/Cmd+K`), modes Éditer / Scinder / Aperçu, mode concentration (`Ctrl/Cmd+\`), paramètres (`Ctrl/Cmd+,`).
 - Accessibilité : navigation clavier, focus piégé dans les boîtes de confirmation, annonces `aria-live`, contrastes texte/fond tenus au-dessus de 4,5:1.
 
 ## Architecture
@@ -55,6 +62,7 @@ backend/           Go + Wails v2
   internal/storage     Schéma et migrations SQLite
   internal/search      Recherche FTS5 et construction des extraits
   internal/transfer    Export, sauvegarde, validation, restauration
+  internal/review      Cartes de révision, planification FSRS, maîtrise
   internal/preferences Préférences locales
   internal/bindings    Méthodes exposées à Wails
 
@@ -66,24 +74,42 @@ SQLite est l'unique source de vérité ; le frontend n'appelle que les méthodes
 
 ## Installer
 
-**Arch Linux (AUR)** — paquet `notecore`, à partir des sources du dépôt :
+Les fichiers ci-dessous sont publiés sur la page des [releases](https://github.com/NICE-DEV226/NoteCore/releases), avec un fichier `SHA256SUMS` :
 
 ```bash
-yay -S notecore      # ou : paru -S notecore
+sha256sum -c SHA256SUMS --ignore-missing   # Linux ; sous Windows : Get-FileHash <fichier>
 ```
 
-**Binaire précompilé** — Linux et Windows, sur la page des [releases](https://github.com/NICE-DEV226/NoteCore/releases) :
+Installer, mettre à jour ou désinstaller NoteCore **ne touche jamais à vos notes** : elles vivent dans un dossier à part (voir « Vos données »).
 
-```bash
-# Linux
-chmod +x notecore-v0.1.2-linux-x64 && ./notecore-v0.1.2-linux-x64
-```
+### Windows 10 / 11
 
-Sous Windows, l'exécutable requiert le runtime **WebView2** (préinstallé sous Windows 11). Chaque release publie les empreintes SHA-256 des fichiers.
+| Fichier | Usage |
+| --- | --- |
+| `notecore-<version>-windows-x64-setup.exe` | **Recommandé.** Installateur sans droits administrateur : installe pour l'utilisateur dans `%LOCALAPPDATA%\Programs\NoteCore`, crée les raccourcis (menu Démarrer, bureau) et un désinstallateur (Paramètres → Applications). |
+| `notecore-<version>-windows-x64.exe` | Exécutable autonome, sans installation (clé USB, poste verrouillé). |
 
-**À partir des sources** — voir [docs/procedure-build.md](docs/procedure-build.md).
+NoteCore s'affiche avec le runtime **WebView2** (déjà présent sous Windows 11 et sur la plupart des Windows 10 à jour). L'installateur le détecte et ne le télécharge que s'il manque ; l'exécutable autonome le fait à son premier lancement. Dans ce seul cas, une connexion est nécessaire — une fois.
 
-Installer une version plus récente conserve vos notes : voir « Vos données » ci-dessous.
+> Les exécutables ne sont pas signés numériquement : Windows SmartScreen peut afficher « Windows a protégé votre ordinateur ». Cliquez sur **Informations complémentaires**, puis **Exécuter quand même**, après avoir vérifié l'empreinte.
+
+### Linux
+
+| Distribution | Commande |
+| --- | --- |
+| Arch, Manjaro (AUR) | `yay -S notecore` ou `paru -S notecore` |
+| Debian, Ubuntu et dérivés (22.04+) | `sudo apt install ./notecore-<version>-linux-amd64.deb` |
+| Toutes les autres | `tar xzf notecore-<version>-linux-x64.tar.gz && cd notecore-<version>-linux-x64 && ./install.sh` |
+
+`install.sh` installe **pour l'utilisateur courant**, sans `sudo`, dans `~/.local` ; `./install.sh --system` installe pour tous (`/usr/local`) et `./install.sh --uninstall` désinstalle. Il vérifie d'abord la présence de **WebKitGTK 4.1** et de **GTK 3** et, s'ils manquent, affiche la commande exacte pour votre distribution (pacman, apt, dnf, zypper).
+
+Désinstaller : `sudo apt remove notecore` (deb), `sudo pacman -R notecore` (Arch), `./install.sh --uninstall` (archive).
+
+### À partir des sources
+
+Voir [docs/procedure-build.md](docs/procedure-build.md).
+
+Au premier lancement, un **guide de prise en main** présente l'essentiel et peut créer une note d'exemple ; il se rouvre depuis Paramètres → Aide.
 
 ## Prérequis
 
@@ -198,10 +224,13 @@ Base locale SQLite, en mode WAL :
 
 **Pièces jointes.** Les octets vivent dans la base (table `attachments`), donc sauvegardés et restaurés avec le reste, et supprimés avec leur note. Aucune copie externe, aucun service tiers.
 
+**Cartes de révision.** Le texte d'une carte reste dans la note ; la base ne conserve que l'état d'apprentissage (tables `cards` et `review_log`), sauvegardé et restauré avec le reste. Supprimer une note supprime ses cartes. La planification est calculée localement.
+
 ## Documentation
 
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — architecture, modèle de données, sauvegardes, sécurité
-- [`docs/architecture/ADR-001`](docs/architecture/ADR-001-stack-et-style.md) à [`ADR-006`](docs/architecture/ADR-006-pieces-jointes.md) — décisions techniques et raisons
+- [`docs/architecture/ADR-001`](docs/architecture/ADR-001-stack-et-style.md) à [`ADR-007`](docs/architecture/ADR-007-revision-espacee.md) — décisions techniques et raisons
+- [`docs/cahier-des-charges-v2.md`](docs/cahier-des-charges-v2.md) — V2 : réviser ses notes (périmètre, critères, risques)
 - [`docs/revue-ergonomie.md`](docs/revue-ergonomie.md) — revue d'ergonomie et correctifs appliqués
 - [`docs/procedure-build.md`](docs/procedure-build.md) — build et développement en détail
 - [`docs/release-notes/`](docs/release-notes) — notes de version

@@ -11,6 +11,10 @@ frontend/.svelte-kit/
 backend/build/bin/
 backend/build/*.exe
 backend/build/*.dll
+# Générés à chaque `wails build -nsis` (modèle Wails + exécutable WebView2 téléchargé) ;
+# seul project.nsi est une source.
+backend/build/windows/installer/tmp/
+backend/build/windows/installer/wails_tools.nsh
 
 # Bases de données locales (données utilisateur)
 *.db

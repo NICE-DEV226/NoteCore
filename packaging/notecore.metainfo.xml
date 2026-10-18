@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.NICE_DEV226.NoteCore</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>NoteCore</name>
+  <summary>Prise de notes Markdown hors ligne, avec révision espacée</summary>
+  <description>
+    <p>NoteCore est une application de bureau pour étudiants et développeurs : notes en Markdown, dossiers, étiquettes, recherche plein texte, pièces jointes locales, exports et sauvegardes vérifiables.</p>
+    <p>Les cartes de révision s'écrivent dans les notes elles-mêmes et sont planifiées par l'algorithme FSRS. Aucun compte, aucun serveur, aucune synchronisation : tout reste sur votre ordinateur.</p>
+  </description>
+  <launchable type="desktop-id">notecore.desktop</launchable>
+  <url type="homepage">https://github.com/NICE-DEV226/NoteCore</url>
+  <url type="bugtracker">https://github.com/NICE-DEV226/NoteCore/issues</url>
+  <provides>
+    <binary>notecore</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+</component>

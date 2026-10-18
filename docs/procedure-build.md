@@ -149,3 +149,38 @@ L'icône installée est `backend/assets/notecore.png` (256×256) dans
   sans lui, `wails dev` échoue à démarrer le serveur de développement.
   Le serveur Vite s'affiche alors sur `http://localhost:5173` et l'appel
   des méthodes Go depuis le navigateur sur `http://localhost:34115`.
+
+
+## Installateurs et paquets (livrables d'installation)
+
+Tout est produit par `.github/workflows/release.yml` (étiquette `v*`, ou
+« Run workflow » pour essayer sans publier). Les fichiers sont décrits ici pour
+pouvoir les reconstruire à la main.
+
+### Windows : installateur (NSIS) et exécutable
+
+```
+sudo apt install nsis                # Debian/Ubuntu ; makensis est requis
+cd backend
+CGO_ENABLED=0 $(go env GOPATH)/bin/wails build -platform windows/amd64 -clean -nsis -webview2 embed
+```
+
+- `build/bin/notecore.exe` : exécutable autonome (installe WebView2 au premier
+  lancement s'il manque, grâce à `-webview2 embed`).
+- `build/bin/NoteCore-amd64-installer.exe` : installateur. Sa source est
+  `build/windows/installer/project.nsi` (installation par utilisateur, sans
+  UAC, interface en français, case « Lancer NoteCore »). `wails_tools.nsh` et
+  `tmp/` sont régénérés à chaque build et ne sont pas suivis par git.
+- La désinstallation retire le programme et le cache WebView2, **jamais**
+  `%APPDATA%\NoteCore` (les notes).
+
+### Linux : archive, .deb, AUR
+
+- **Archive** : binaire + `install.sh` + `notecore.desktop` + icône + metainfo
+  (`packaging/linux/install.sh`). Installation utilisateur sans `sudo`.
+- **.deb** : `VERSION=0.2.0 nfpm package -p deb -f packaging/nfpm.yaml -t dist/`
+  (nfpm : `go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3`).
+  Dépend de `libgtk-3-0` et `libwebkit2gtk-4.1-0`.
+- **AUR** : `packaging/aur/PKGBUILD`. Après toute modification :
+  `cd packaging/aur && makepkg --printsrcinfo > .SRCINFO`. À chaque nouvelle
+  version, mettre à jour `pkgver` et `sha256sums` (`updpkgsums`).

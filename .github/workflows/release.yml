@@ -1,0 +1,184 @@
+name: Release
+
+# Construit les livrables Linux et Windows. Sur une étiquette `v*`, les publie
+# avec leurs empreintes SHA-256 ; sinon, les garde en artefacts du workflow
+# (téléchargeables 90 jours) pour essayer une version avant de l'étiqueter.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux x64 (.deb, .tar.gz)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances du frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Installer les bibliothèques de compilation
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      # Wails interroge « webkit2gtk-4.0 », absent des distributions récentes :
+      # alias vers la 4.1 effectivement installée (voir ci.yml).
+      - name: Créer le pont pkg-config webkit2gtk-4.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/pc"
+          cp "$(pkg-config --variable=pcfiledir webkit2gtk-4.1)/webkit2gtk-4.1.pc" \
+            "$RUNNER_TEMP/pc/webkit2gtk-4.0.pc"
+
+      - name: Installer Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Installer les outils (Wails, nfpm)
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
+
+      - name: Compiler l'application
+        working-directory: backend
+        env:
+          PKG_CONFIG_PATH: ${{ runner.temp }}/pc
+        run: "$(go env GOPATH)/bin/wails build -clean"
+
+      - name: Préparer les livrables
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VERSION="${GITHUB_REF_NAME#v}"; TAG="${GITHUB_REF_NAME}"
+          else VERSION="$(sed -n 's/.*"productVersion": *"\([^"]*\)".*/\1/p' backend/wails.json)"; TAG="v${VERSION}"; fi
+          mkdir -p dist "notecore-${TAG}-linux-x64"
+          cp backend/build/bin/notecore backend/assets/notecore.png \
+            packaging/notecore.desktop packaging/notecore.metainfo.xml \
+            packaging/linux/install.sh LICENSE "notecore-${TAG}-linux-x64/"
+          tar -czf "dist/notecore-${TAG}-linux-x64.tar.gz" "notecore-${TAG}-linux-x64"
+          VERSION="${VERSION}" "$(go env GOPATH)/bin/nfpm" package \
+            -p deb -f packaging/nfpm.yaml -t dist/
+          mv dist/notecore_*_amd64.deb "dist/notecore-${TAG}-linux-amd64.deb"
+          ls -lh dist
+
+      - name: Publier en artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: notecore-linux-x64
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows x64 (installateur, exécutable)
+    runs-on: ubuntu-24.04
+    env:
+      # La cible Windows n'utilise pas de cgo : le WebView2Loader est en Go pur.
+      CGO_ENABLED: "0"
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances du frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Installer Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Installer NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nsis
+
+      - name: Installer la CLI Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      # `-nsis` produit l'installateur à côté de l'exécutable ; l'installateur
+      # embarque le programme d'installation de WebView2 et ne l'exécute que
+      # si le runtime est absent. `-webview2 embed` fait de même pour
+      # l'exécutable seul (il installe WebView2 à son premier lancement).
+      - name: Compiler l'application et l'installateur
+        working-directory: backend
+        run: $(go env GOPATH)/bin/wails build -platform windows/amd64 -clean -nsis -webview2 embed
+
+      - name: Préparer les livrables
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="${GITHUB_REF_NAME}"
+          else TAG="v$(sed -n 's/.*"productVersion": *"\([^"]*\)".*/\1/p' backend/wails.json)"; fi
+          mkdir -p dist
+          test -f backend/build/bin/notecore.exe
+          cp backend/build/bin/notecore.exe "dist/notecore-${TAG}-windows-x64.exe"
+          installer="$(ls backend/build/bin/*-installer.exe | head -n 1)"
+          cp "$installer" "dist/notecore-${TAG}-windows-x64-setup.exe"
+          file dist/*.exe
+          ls -lh dist
+
+      - name: Publier en artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: notecore-windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publier le release (étiquette v*)
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Récupérer les livrables
+        uses: actions/download-artifact@v8
+        with:
+          pattern: notecore-*
+          path: dist
+          merge-multiple: true
+
+      - name: Calculer les empreintes
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Créer ou compléter le release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        # Ce job ne copie pas le dépôt : gh doit connaître explicitement le dépôt.
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+              --title "NoteCore $TAG" --generate-notes
+          fi

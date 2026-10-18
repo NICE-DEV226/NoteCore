@@ -1,0 +1,46 @@
+# Paquet .deb (Debian, Ubuntu et dérivés), produit par nfpm dans la CI :
+#   VERSION=0.2.0 nfpm package -p deb -f packaging/nfpm.yaml -t dist/
+# Le binaire doit d'abord être compilé (backend/build/bin/notecore).
+name: notecore
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: editors
+priority: optional
+maintainer: NICE-DEV226 <nicedev226@gmail.com>
+description: |
+  Prise de notes Markdown hors ligne, avec révision espacée.
+  Notes, dossiers, étiquettes, recherche plein texte, pièces jointes locales,
+  exports et sauvegardes vérifiables. Aucun compte, aucun serveur : tout reste
+  sur l'ordinateur.
+homepage: https://github.com/NICE-DEV226/NoteCore
+license: Apache-2.0
+
+# Bibliothèques d'affichage (Ubuntu 22.04 et plus récent, Debian 12 et plus récent).
+depends:
+  - libgtk-3-0
+  - libwebkit2gtk-4.1-0
+recommends:
+  - xdg-utils
+
+contents:
+  - src: backend/build/bin/notecore
+    dst: /usr/bin/notecore
+    file_info:
+      mode: 0755
+  - src: packaging/notecore.desktop
+    dst: /usr/share/applications/notecore.desktop
+    file_info:
+      mode: 0644
+  - src: packaging/notecore.metainfo.xml
+    dst: /usr/share/metainfo/notecore.metainfo.xml
+    file_info:
+      mode: 0644
+  - src: backend/assets/notecore.png
+    dst: /usr/share/icons/hicolor/256x256/apps/notecore.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/notecore/copyright
+    file_info:
+      mode: 0644

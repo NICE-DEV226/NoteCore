@@ -1,9 +1,15 @@
 [Desktop Entry]
 Type=Application
+Version=1.5
 Name=NoteCore
-Comment=Prise de notes hors ligne
+GenericName=Prise de notes
+GenericName[en]=Note taking
+Comment=Prise de notes Markdown hors ligne, avec révision espacée
+Comment[en]=Offline Markdown notes with spaced repetition
 Exec=notecore
 Icon=notecore
 Terminal=false
-Categories=Office;Utility;
+StartupNotify=true
+Categories=Office;TextEditor;
+Keywords=notes;markdown;cours;étude;révision;flashcards;
 StartupWMClass=notecore

@@ -12,6 +12,7 @@ license=('Apache-2.0')
 # `libjavascriptcoregtk-4.1.so` est fourni par webkit2gtk-4.1, sans paquet
 # dédié : lister javascriptcoregtk-4.1 ferait échouer l'installation.
 depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
+optdepends=('xdg-utils: ouvrir les liens dans le navigateur')
 makedepends=('go' 'nodejs' 'npm')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('6346b9fccccceab5fd0802fc9cc60b02802dbc316b75a70b5d31511fbba2e8ff')
@@ -65,12 +66,21 @@ build() {
   (cd backend && go build -tags "desktop production" -o notecore .)
 }
 
+# Tests du backend (hors interface). Ils n'ont besoin ni du réseau ni de cgo.
+check() {
+  cd "$_pkgname-$pkgver/backend"
+  CGO_ENABLED=0 go test ./internal/...
+}
+
 package() {
   cd "$_pkgname-$pkgver"
 
   install -Dm755 backend/notecore "$pkgdir/usr/bin/notecore"
   install -Dm644 packaging/notecore.desktop \
     "$pkgdir/usr/share/applications/notecore.desktop"
+  install -Dm644 packaging/notecore.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/notecore.metainfo.xml"
   install -Dm644 backend/assets/notecore.png \
     "$pkgdir/usr/share/icons/hicolor/256x256/apps/notecore.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
