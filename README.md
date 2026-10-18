@@ -170,7 +170,9 @@ Base locale SQLite, en mode WAL :
 
 **Sauvegarde et restauration.** Une sauvegarde est une copie cohérente de la base (checkpoint SQLite préalable), accompagnée de métadonnées de format et de la version de schéma. Une restauration est relue dans une zone temporaire, validée, présentée en aperçu des conflits, puis appliquée par remplacement atomique ou import explicite — jamais en écrasant silencieusement des données.
 
-**Réseau.** L'application n'ouvre aucune connexion : ni compte, ni télémétrie, ni synchronisation. Seule exception, volontaire et image par image : une image insérée par URL est chargée depuis son hôte. Seuls les schémas `http` et `https` sont acceptés — `javascript:`, `data:` et `file:` sont refusés.
+**Mise à niveau.** Installer une version plus récente conserve vos notes : la base vit hors du dossier d'installation, donc remplacer le binaire ne touche à rien. Si la nouvelle version doit migrer le schéma de la base, une copie de celle-ci est écrite à côté — avant la moindre écriture — et son chemin est affiché au lancement. Rien n'est perdu, même si une migration venait à échouer.
+
+**Réseau.** L'application n'ouvre aucune connexion : ni compte, ni télémétrie, ni synchronisation. Les images sont importées depuis le poste et copiées à côté des notes à l'export — aucun hôte n'est contacté.
 
 **Pièces jointes.** Les octets vivent dans la base (table `attachments`), donc sauvegardés et restaurés avec le reste, et supprimés avec leur note. Aucune copie externe, aucun service tiers.
 
@@ -178,7 +180,9 @@ Base locale SQLite, en mode WAL :
 
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — architecture, modèle de données, sauvegardes, sécurité
 - [`docs/architecture/ADR-001`](docs/architecture/ADR-001-stack-et-style.md) à [`ADR-006`](docs/architecture/ADR-006-pieces-jointes.md) — décisions techniques et raisons
+- [`docs/revue-ergonomie.md`](docs/revue-ergonomie.md) — revue d'ergonomie et correctifs appliqués
 - [`docs/procedure-build.md`](docs/procedure-build.md) — build et développement en détail
+- [`docs/release-notes/`](docs/release-notes) — notes de version
 
 ## Licence
 
