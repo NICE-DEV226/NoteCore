@@ -5,6 +5,8 @@
 package notes
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -21,6 +23,10 @@ import (
 // refusé avec un message lisible plutôt que de gonfler la base sans
 // limite (ADR-006).
 const MaxAttachmentBytes = 10 << 20 // 10 Mio
+
+// AttachmentRefPrefix préfixe, dans le Markdown, la référence à une pièce jointe
+// (`attachment:<id>`, ADR-006).
+const AttachmentRefPrefix = "attachment:"
 
 // maxFilenameLen borne le nom conservé pour l'export.
 const maxFilenameLen = 120
@@ -247,4 +253,106 @@ func isForeignKeyErr(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToUpper(err.Error()), "FOREIGN KEY")
+}
+
+// --- parcourir et ouvrir ---------------------------------------------------
+
+// AttachmentRef décrit une pièce jointe avec la note qui la porte : la vue
+// « Fichiers » les parcourt toutes, quelle que soit la note.
+type AttachmentRef struct {
+	Attachment
+	NoteTitle string  `json:"noteTitle"`
+	FolderID  *string `json:"folderId,omitempty"`
+}
+
+// ListAllAttachments renvoie les métadonnées de toutes les pièces jointes
+// (sans les octets), les plus récentes d'abord.
+func (s *Service) ListAllAttachments(ctx context.Context) ([]AttachmentRef, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, a.note_id, a.filename, a.mime, a.size, a.created_at, n.title, n.folder_id
+		  FROM attachments a JOIN notes n ON n.id = a.note_id
+		 ORDER BY a.created_at DESC, a.id`)
+	if err != nil {
+		return nil, fmt.Errorf("lecture des pièces jointes : %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]AttachmentRef, 0)
+	for rows.Next() {
+		var r AttachmentRef
+		var folder sql.NullString
+		if err := rows.Scan(&r.ID, &r.NoteID, &r.Filename, &r.Mime, &r.Size, &r.CreatedAt, &r.NoteTitle, &folder); err != nil {
+			return nil, fmt.Errorf("lecture d'une pièce jointe : %w", err)
+		}
+		if folder.Valid {
+			v := folder.String
+			r.FolderID = &v
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// riskyExtensions : types que le système exécute ou interprète quand on les
+// « ouvre ». NoteCore ne les confie jamais au programme par défaut : une pièce
+// jointe est une donnée, pas un programme (l'utilisateur peut toujours les
+// enregistrer ailleurs).
+var riskyExtensions = map[string]bool{
+	".exe": true, ".com": true, ".bat": true, ".cmd": true, ".msi": true, ".msp": true,
+	".scr": true, ".pif": true, ".cpl": true, ".dll": true, ".sys": true, ".lnk": true,
+	".url": true, ".reg": true, ".hta": true, ".chm": true, ".inf": true,
+	".ps1": true, ".psm1": true, ".vbs": true, ".vbe": true, ".js": true, ".jse": true,
+	".wsf": true, ".wsh": true, ".jar": true, ".msc": true, ".gadget": true,
+	".sh": true, ".bash": true, ".run": true, ".desktop": true, ".appimage": true,
+	".app": true, ".command": true, ".workflow": true, ".action": true, ".pkg": true, ".dmg": true,
+}
+
+// IsRiskyFilename dit si ouvrir ce fichier avec l'application par défaut
+// pourrait l'exécuter. L'extension double (« facture.pdf.exe ») est jugée sur
+// sa dernière partie ; les espaces et points finaux, que Windows ignore, sont
+// retirés avant le test.
+func IsRiskyFilename(name string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(name), ". ")
+	return riskyExtensions[strings.ToLower(filepath.Ext(trimmed))]
+}
+
+// ArchiveEntry est une entrée d'une archive .zip jointe.
+type ArchiveEntry struct {
+	Name  string `json:"name"`
+	Size  int64  `json:"size"`
+	IsDir bool   `json:"isDir"`
+}
+
+const maxArchiveListing = 2000
+
+// ListArchive liste le contenu d'une pièce jointe .zip, sans rien extraire :
+// les noms ne servent qu'à l'affichage, jamais à construire un chemin.
+func (s *Service) ListArchive(ctx context.Context, id string) ([]ArchiveEntry, bool, error) {
+	var data []byte
+	err := s.db.QueryRowContext(ctx, `SELECT data FROM attachments WHERE id = ?`, id).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("pièce jointe %q introuvable", id)
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("lecture pièce jointe : %w", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, false, fmt.Errorf("archive illisible : %w", err)
+	}
+	truncated := len(zr.File) > maxArchiveListing
+	out := make([]ArchiveEntry, 0, min(len(zr.File), maxArchiveListing))
+	for i, f := range zr.File {
+		if i >= maxArchiveListing {
+			break
+		}
+		name := strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return -1
+			}
+			return r
+		}, f.Name)
+		out = append(out, ArchiveEntry{Name: name, Size: int64(f.UncompressedSize64), IsDir: f.FileInfo().IsDir()})
+	}
+	return out, truncated, nil
 }

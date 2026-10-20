@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/preferences"
 	"notecore/backend/internal/review"
+	"notecore/backend/internal/share"
 )
 
 // NoteCore est la facade unique exposée à l'interface.
@@ -30,6 +32,12 @@ type NoteCore struct {
 	// Copie de la base conservée avant une migration de schéma : annoncée
 	// à l'interface, jamais un fichier silencieux sur le disque.
 	startupReport string
+	// Partage hors connexion (ADR-008) : un seul envoi à la fois, un seul import
+	// en attente de mot de passe, et les copies temporaires à supprimer.
+	shares   *share.Manager
+	mu       sync.Mutex
+	pending  *pendingImport
+	tempDirs []string
 	// Dossier des données de l'utilisateur, montré dans le guide de prise en main.
 	dataDir string
 }
@@ -38,7 +46,7 @@ func New(svc *notes.Service, db *sql.DB) *NoteCore {
 	if db == nil {
 		panic("bindings : base absente")
 	}
-	return &NoteCore{svc: svc, prefs: preferences.New(db), rev: review.New(db), db: db}
+	return &NoteCore{svc: svc, prefs: preferences.New(db), rev: review.New(db), db: db, shares: share.NewManager()}
 }
 
 // Startup reçoit le contexte du runtime Wails (appelé automatiquement).

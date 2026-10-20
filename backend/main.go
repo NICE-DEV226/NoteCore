@@ -70,6 +70,7 @@ func run() error {
 	api := bindings.New(service, db)
 	api.SetStartupReport(report.SafetyCopy)
 	api.SetDataDir(dir)
+	bindings.SweepTemp()
 
 	// Cartes de révision : indexe les notes d'une installation qui monte en
 	// version et purge les cartes mises de côté depuis trop longtemps. Une
@@ -86,9 +87,10 @@ func run() error {
 		// étroit pour une fenêtre à demi-écran sur un portable ou sous
 		// gestionnaire de fenêtres en mosaïque, assez large pour garder
 		// les trois zones lisibles (Workbench.svelte).
-		MinWidth:  720,
-		MinHeight: 560,
-		OnStartup: api.Startup,
+		MinWidth:   720,
+		MinHeight:  560,
+		OnStartup:  api.Startup,
+		OnShutdown: func(context.Context) { api.Shutdown() },
 		Linux: &linux.Options{
 			Icon:        appIcon,
 			ProgramName: "notecore",

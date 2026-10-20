@@ -1,6 +1,8 @@
 package notes_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"strings"
@@ -175,5 +177,65 @@ func TestTypePieceJointeDeduit(t *testing.T) {
 				t.Errorf("type déduit = %q, attendu %q", a.Mime, tc.want)
 			}
 		})
+	}
+}
+
+func TestIsRiskyFilename(t *testing.T) {
+	risky := []string{"setup.exe", "run.BAT", "a.ps1", "facture.pdf.exe", "x.lnk ", "x.scr.", "script.sh", "app.AppImage", "macro.js", "x.desktop"}
+	for _, n := range risky {
+		if !notes.IsRiskyFilename(n) {
+			t.Errorf("%q doit être jugé risqué", n)
+		}
+	}
+	safe := []string{"cours.pdf", "photo.PNG", "notes.md", "data.csv", "archive.zip", "sans-extension", "exe", "rapport.docx"}
+	for _, n := range safe {
+		if notes.IsRiskyFilename(n) {
+			t.Errorf("%q ne doit pas être jugé risqué", n)
+		}
+	}
+}
+
+func TestListAllAttachmentsEtArchive(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	n, err := svc.CreateNote(ctx, "Cours", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var zbuf bytes.Buffer
+	zw := zip.NewWriter(&zbuf)
+	w, _ := zw.Create("dossier/notes.txt")
+	w.Write([]byte("bonjour"))
+	zw.Close()
+
+	add := func(name, mime string, raw []byte) notes.Attachment {
+		a, err := svc.AddAttachment(ctx, n.ID, notes.AttachmentUpload{
+			Filename: name, Mime: mime, DataBase64: base64.StdEncoding.EncodeToString(raw),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	plain := add("a.txt", "text/plain", []byte("x"))
+	archive := add("lot.zip", "application/zip", zbuf.Bytes())
+
+	all, err := svc.ListAllAttachments(ctx)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("2 pièces jointes attendues : %d, err=%v", len(all), err)
+	}
+	for _, a := range all {
+		if a.NoteTitle != "Cours" || a.NoteID != n.ID {
+			t.Errorf("la note porteuse doit être indiquée : %+v", a)
+		}
+	}
+
+	entries, truncated, err := svc.ListArchive(ctx, archive.ID)
+	if err != nil || truncated || len(entries) != 1 || entries[0].Name != "dossier/notes.txt" || entries[0].Size != 7 {
+		t.Errorf("contenu de l'archive = %+v (tronqué=%v, err=%v)", entries, truncated, err)
+	}
+	if _, _, err := svc.ListArchive(ctx, plain.ID); err == nil {
+		t.Error("un fichier qui n'est pas une archive doit être refusé")
 	}
 }
