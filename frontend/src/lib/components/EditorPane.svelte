@@ -9,6 +9,9 @@
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import Home from './Home.svelte';
+  import Files from './Files.svelte';
+  import { filesOpen, openAttachmentViewer } from '../stores/files';
+  import { shareDialog } from '../stores/ui';
   import MarkdownPreview from '../editor/MarkdownPreview.svelte';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
@@ -547,7 +550,11 @@
 
 <section class="editor">
   {#if !note}
-    <Home />
+    {#if $filesOpen}
+      <Files />
+    {:else}
+      <Home />
+    {/if}
   {:else}
     <div class="topbar">
       <div class="save" class:is-error={$saveState === 'error'} role="status" aria-live="polite">
@@ -585,6 +592,14 @@
           onclick={() => focusMode.update((v) => !v)}
         >
           <Icon name="focus" size={16} />
+        </button>
+        <button
+          class="icon-btn"
+          title="Partager cette note sans connexion (fichier ou réseau local)"
+          aria-label="Partager la note"
+          onclick={() => shareDialog.set({ scope: 'note', id: note?.id ?? '' })}
+        >
+          <Icon name="share" size={16} />
         </button>
         <button
           class="icon-btn"
@@ -724,7 +739,9 @@
             <div class="attachment-list">
               {#each attachments as att (att.id)}
                 <span class="attachment" title={`${att.filename} — ${att.mime}`}>
-                  <span class="attachment-name">{att.filename}</span>
+                  <button class="attachment-open" title="Lire ce fichier" aria-label={`Lire ${att.filename}`} onclick={() => void openAttachmentViewer(att.id)}>
+                    <span class="attachment-name">{att.filename}</span>
+                  </button>
                   <span class="attachment-size">{attachmentSize(att.size)}</span>
                   <button
                     class="attachment-x"
@@ -1193,6 +1210,20 @@
     border-radius: 999px;
     background: var(--surface);
     font-size: 0.76rem;
+  }
+  .attachment-open {
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .attachment-open:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
   }
   .attachment-name {
     overflow: hidden;

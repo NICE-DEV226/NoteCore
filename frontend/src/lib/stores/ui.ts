@@ -39,3 +39,9 @@ export const settingsOpen = writable(false);
 
 /** Mode concentration : seule la zone d'écriture reste visible. */
 export const focusMode = writable(false);
+
+/** Boîte de partage : ce qu'elle propose de partager (note ouverte, dossier, tout). */
+export const shareDialog = writable<{ scope: 'note' | 'folder' | 'all'; id: string } | null>(null);
+
+/** Boîte d'import : depuis un fichier ou un autre appareil du réseau local. */
+export const importOpen = writable(false);

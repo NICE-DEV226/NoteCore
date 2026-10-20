@@ -163,7 +163,7 @@ Cliquez sur « Réviser » dans la barre latérale pour essayer ces trois cartes
             <ul class="points">
               <li><Icon name="search" size={16} /><span><kbd>{mod}</kbd> <kbd>K</kbd> cherche dans le titre, le contenu et les étiquettes, et lance des actions.</span></li>
               <li><Icon name="plus" size={16} /><span><kbd>{mod}</kbd> <kbd>N</kbd> crée une note ; <kbd>{mod}</kbd> <kbd>,</kbd> ouvre les paramètres.</span></li>
-              <li><Icon name="sliders" size={16} /><span>Dans les paramètres : 23 polices, couleurs, tailles, thème clair ou sombre.</span></li>
+              <li><Icon name="sliders" size={16} /><span>Dans les paramètres : 22 polices, couleurs, tailles, thème clair ou sombre.</span></li>
             </ul>
           {:else if step === 3}
             <div class="kicker"><Icon name="layers" size={15} /> Réviser</div>
@@ -202,7 +202,8 @@ Cliquez sur « Réviser » dans la barre latérale pour essayer ces trois cartes
             <ul class="points">
               <li><Icon name="archive" size={16} /><span><strong>Sauvegarde :</strong> Paramètres → Données. Une sauvegarde est vérifiée avant d'être restaurée.</span></li>
               <li><Icon name="download" size={16} /><span><strong>Export :</strong> toutes vos notes en Markdown, lisibles sans NoteCore.</span></li>
-              <li><Icon name="x" size={16} /><span><strong>Aucune connexion :</strong> ni compte, ni télémétrie, ni synchronisation.</span></li>
+              <li><Icon name="share" size={16} /><span><strong>Partage :</strong> envoyez des notes à un camarade par fichier ou sur le Wi-Fi local, sans Internet.</span></li>
+              <li><Icon name="x" size={16} /><span><strong>Aucune connexion à Internet :</strong> ni compte, ni télémétrie, ni synchronisation.</span></li>
             </ul>
             <button class="sample" onclick={() => void createSample()}>
               <Icon name="plus-circle" size={16} />

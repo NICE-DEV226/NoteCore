@@ -14,11 +14,15 @@
   import CommandPalette from '../lib/components/CommandPalette.svelte';
   import ReviewSession from '../lib/components/ReviewSession.svelte';
   import Guide from '../lib/components/Guide.svelte';
+  import AttachmentViewer from '../lib/components/AttachmentViewer.svelte';
+  import ShareDialog from '../lib/components/ShareDialog.svelte';
+  import ImportDialog from '../lib/components/ImportDialog.svelte';
+  import { viewer } from '../lib/stores/files';
   import { onMount } from 'svelte';
   import { guideOpen, initGuide } from '../lib/stores/guide';
   import { reviewOpen } from '../lib/stores/review';
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
-  import { focusMode, paletteOpen, settingsOpen } from '../lib/stores/ui';
+  import { focusMode, importOpen, paletteOpen, settingsOpen, shareDialog } from '../lib/stores/ui';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
@@ -90,6 +94,18 @@
 
 {#if $guideOpen}
   <Guide />
+{/if}
+
+{#if $viewer}
+  <AttachmentViewer />
+{/if}
+
+{#if $shareDialog}
+  <ShareDialog />
+{/if}
+
+{#if $importOpen}
+  <ImportDialog />
 {/if}
 
 {#if $transferNotice}

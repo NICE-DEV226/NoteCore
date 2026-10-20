@@ -18,6 +18,7 @@
     favoritesCount,
     folderError,
     folders,
+    goFiles,
     goHome,
     loaded,
     notes,
@@ -28,6 +29,7 @@
   } from '../stores/workspace';
   import { paletteOpen, settingsOpen } from '../stores/ui';
   import { reviewStats, startReview } from '../stores/review';
+  import { filesOpen } from '../stores/files';
   import { theme, setThemePref } from '../stores/appTheme';
   import { formatFullDate } from '../utils/format';
   import type { RestorePreview, View } from '../api/types';
@@ -165,12 +167,22 @@
       <nav class="nav" aria-label="Navigation">
         <button
           class="nav-item"
-          class:active={$selectedNoteId === null}
-          aria-current={$selectedNoteId === null ? 'page' : undefined}
+          class:active={$selectedNoteId === null && !$filesOpen}
+          aria-current={$selectedNoteId === null && !$filesOpen ? 'page' : undefined}
           onclick={() => void goHome()}
         >
           <Icon name="home" size={16} />
           <span class="nav-label">Accueil</span>
+        </button>
+        <button
+          class="nav-item"
+          class:active={$filesOpen && $selectedNoteId === null}
+          aria-current={$filesOpen && $selectedNoteId === null ? 'page' : undefined}
+          title="Parcourir tous les fichiers joints"
+          onclick={() => void goFiles()}
+        >
+          <Icon name="paperclip" size={16} />
+          <span class="nav-label">Fichiers</span>
         </button>
         <button
           class="nav-item review"

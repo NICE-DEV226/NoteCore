@@ -331,6 +331,26 @@ const eod = () => new Date(new Date().setHours(24, 0, 0, 0)).getTime();
   });
 }
 
+// Fichiers joints d'exemple (lecture, vue « Fichiers »).
+{
+  const reseaux = seed.notes.find((n) => n.title.includes('Réseaux'));
+  const os = seed.notes.find((n) => n.title.includes('exploitation'));
+  const demo: Array<[string | undefined, string, string, string]> = [
+    [reseaux?.id, 'cours-reseaux.pdf', 'application/pdf', 'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA1IDAgUl0gL0NvdW50IDIgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA0MjAgNTk1XSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNyAwIFIgPj4gPj4gPj4KZW5kb2JqCjQgMCBvYmoKPDwgL0xlbmd0aCAxMzUgPj4Kc3RyZWFtCkJUIC9GMSAyNCBUZiA0MCA1MjAgVGQgKE5vdGVDb3JlIC0gZXhlbXBsZSBkZSBQREYpIFRqIEVUIEJUIC9GMSAxMyBUZiA0MCA0ODAgVGQgKEx1IGRhbnMgbGEgdmlzaW9ubmV1c2UsIHNhbnMgbW9kdWxlIGR1IHN5c3RlbWUuKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA0MjAgNTk1XSAvQ29udGVudHMgNiAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNyAwIFIgPj4gPj4gPj4KZW5kb2JqCjYgMCBvYmoKPDwgL0xlbmd0aCAxMDcgPj4Kc3RyZWFtCkJUIC9GMSAyNCBUZiA0MCA1MjAgVGQgKFBhZ2UgMikgVGogRVQgQlQgL0YxIDEzIFRmIDQwIDQ4MCBUZCAoTGVzIHBhZ2VzIHNvbnQgZGVzc2luZWVzIGEgbGEgZGVtYW5kZS4pIFRqIEVUCmVuZHN0cmVhbQplbmRvYmoKNyAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCA4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMjEgMDAwMDAgbiAKMDAwMDAwMDI0NyAwMDAwMCBuIAowMDAwMDAwNDMzIDAwMDAwIG4gCjAwMDAwMDA1NTkgMDAwMDAgbiAKMDAwMDAwMDcxNyAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDggL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjc4NwolJUVPRgo='],
+    [reseaux?.id, 'modele-en-couches.svg', 'image/svg+xml', 'PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iNDgwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2UwZTdmZiIvPjxjaXJjbGUgY3g9IjE1MCIgY3k9IjE1MCIgcj0iODAiIGZpbGw9IiM2MzY2ZjEiLz48cmVjdCB4PSIyNjAiIHk9IjkwIiB3aWR0aD0iMTUwIiBoZWlnaHQ9IjEyMCIgcng9IjE0IiBmaWxsPSIjYTViNGZjIi8+PHRleHQgeD0iMjQwIiB5PSIyNzAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjIyIiBmaWxsPSIjMzEyZTgxIj5Nb2RlbGUgZW4gY291Y2hlczwvdGV4dD48L3N2Zz4='],
+    [reseaux?.id, 'protocoles.csv', 'text/csv', 'Q291Y2hlO1Byb3RvY29sZTtQb3J0CkFwcGxpY2F0aW9uO0hUVFA7ODAKQXBwbGljYXRpb247SFRUUFM7NDQzClRyYW5zcG9ydDtUQ1A7LQpUcmFuc3BvcnQ7VURQOy0KUmVzZWF1O0lQOy0K'],
+    [os?.id, 'journal.txt', 'text/plain', 'IyBKb3VybmFsIGRlIGJvcmQKCjIwMjYtMTAtMTggIG1pZ3JhdGlvbiBkdSBzY2hlbWEgdjMKMjAyNi0xMC0xOSAgdGVzdHMgZHUgbW90ZXVyIEZTUlMKMjAyNi0xMC0yMCAgcGFydGFnZSBob3JzIGNvbm5leGlvbgo='],
+    [os?.id, 'tp-processus.zip', 'application/zip', 'UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==']
+  ];
+  demo.forEach(([noteId, filename, mime, data], i) => {
+    if (!noteId) return;
+    attachments.push({
+      id: newId('att'), noteId, filename, mime, size: Math.round((data.length * 3) / 4),
+      createdAt: minutesAgo(30 + i * 90), dataBase64: data
+    });
+  });
+}
+
 export const mockApi: NoteCoreApi = {
   async listNotes() {
     await delay();
@@ -589,6 +609,51 @@ export const mockApi: NoteCoreApi = {
     mockReview.newPerDay = newPerDay;
     mockReview.retention = retention;
   },
+
+  async listAllAttachments() {
+    await delay(40);
+    return attachments.map((a) => ({
+      id: a.id, noteId: a.noteId, filename: a.filename, mime: a.mime, size: a.size, createdAt: a.createdAt,
+      noteTitle: seed.notes.find((n) => n.id === a.noteId)?.title ?? '', folderId: seed.notes.find((n) => n.id === a.noteId)?.folderId ?? null
+    }));
+  },
+
+  async listArchive() {
+    return { entries: [{ name: 'cours/', size: 0, isDir: true }, { name: 'cours/notes.txt', size: 1204, isDir: false }], truncated: false };
+  },
+
+  async openAttachment() {
+    throw new Error("L'ouverture avec le système est disponible dans l'application native.");
+  },
+
+  async shareToFile() {
+    throw new Error("L'enregistrement est disponible dans l'application native.");
+  },
+
+  async shareStart() {
+    await delay(200);
+    return { urls: ['http://192.168.1.24:41823/s/Zk3p0wX-demo'], filename: 'Cours.notecore', size: 20480, expiresAt: new Date(Date.now() + 600_000).toISOString(), encrypted: false, notes: 3, attachments: 1 };
+  },
+
+  async shareStatus() {
+    return { state: 'waiting' as const };
+  },
+
+  async shareStop() {},
+
+  async importFromFile() {
+    throw new Error("L'import est disponible dans l'application native.");
+  },
+
+  async importFromUrl() {
+    throw new Error("L'import est disponible dans l'application native.");
+  },
+
+  async importPending() {
+    throw new Error("L'import est disponible dans l'application native.");
+  },
+
+  async cancelPending() {},
 
   async appInfo() {
     return { os: 'linux', dataDir: '~/.config/NoteCore', databasePath: '~/.config/NoteCore/notecore.db' };

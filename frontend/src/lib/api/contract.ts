@@ -1,4 +1,11 @@
 import type {
+  ArchiveListing,
+  AttachmentRef,
+  ImportResult,
+  LanShare,
+  ShareOptions,
+  ShareSaved,
+  ShareStatus,
   AppInfo,
   MasteryRow,
   NoteCards,
@@ -117,6 +124,26 @@ export interface NoteCoreApi {
 
   /** Système et dossier des données, pour le guide de prise en main. */
   appInfo(): Promise<AppInfo>;
+
+  // --- fichiers joints : parcourir, ouvrir, lire (ADR-006) ---
+
+  /** Toutes les pièces jointes, avec la note qui les porte. */
+  listAllAttachments(): Promise<AttachmentRef[]>;
+  /** Contenu d'une archive .zip jointe, sans rien extraire. */
+  listArchive(id: string): Promise<ArchiveListing>;
+  /** Ouvre la pièce jointe avec l'application du système (refusé pour les exécutables). */
+  openAttachment(id: string): Promise<void>;
+
+  // --- partage hors connexion et import (ADR-008) ---
+
+  shareToFile(options: ShareOptions): Promise<ShareSaved>;
+  shareStart(options: ShareOptions): Promise<LanShare>;
+  shareStatus(): Promise<ShareStatus>;
+  shareStop(): Promise<void>;
+  importFromFile(): Promise<ImportResult>;
+  importFromUrl(url: string): Promise<ImportResult>;
+  importPending(id: string, passphrase: string): Promise<ImportResult>;
+  cancelPending(): Promise<void>;
 
   /** Ouvre une adresse http(s) ou mailto dans le navigateur du système. */
   openExternal(url: string): Promise<void>;

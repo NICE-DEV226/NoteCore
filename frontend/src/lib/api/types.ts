@@ -161,3 +161,76 @@ export interface AppInfo {
   dataDir: string;
   databasePath: string;
 }
+
+// --- fichiers joints et partage hors connexion (ADR-006, ADR-008) -----------
+
+/** Pièce jointe avec la note qui la porte (vue « Fichiers »). */
+export interface AttachmentRef extends Attachment {
+  noteTitle: string;
+  folderId?: string | null;
+}
+
+export interface ArchiveEntry {
+  name: string;
+  size: number;
+  isDir: boolean;
+}
+
+export interface ArchiveListing {
+  entries: ArchiveEntry[];
+  truncated: boolean;
+}
+
+export type ShareScope = 'note' | 'folder' | 'all';
+export type ShareFormat = 'notecore' | 'markdown';
+
+export interface ShareOptions {
+  scope: ShareScope;
+  id: string;
+  format: ShareFormat;
+  passphrase: string;
+}
+
+export interface ShareSaved {
+  saved: boolean;
+  path: string;
+  notes: number;
+  attachments: number;
+  encrypted: boolean;
+}
+
+export interface LanShare {
+  urls: string[];
+  filename: string;
+  size: number;
+  expiresAt: string;
+  encrypted: boolean;
+  notes: number;
+  attachments: number;
+}
+
+export interface ShareStatus {
+  state: 'idle' | 'waiting' | 'downloaded' | 'expired' | 'stopped';
+  urls?: string[];
+  filename?: string;
+  size?: number;
+  expiresAt?: string;
+}
+
+export interface ImportReport {
+  imported: number;
+  skipped: number;
+  renamed: number;
+  foldersCreated: number;
+  attachments: number;
+  attachmentsSkipped: number;
+  titles: string[];
+}
+
+export interface ImportResult {
+  cancelled: boolean;
+  needsPassphrase: boolean;
+  wrongPassphrase: boolean;
+  pendingId: string;
+  report: ImportReport;
+}

@@ -2,6 +2,13 @@ import type { NoteCoreApi } from './contract';
 import { mockApi } from './mock';
 import type {
   AppInfo,
+  ArchiveListing,
+  AttachmentRef,
+  ImportResult,
+  LanShare,
+  ShareOptions,
+  ShareSaved,
+  ShareStatus,
   Attachment,
   AttachmentData,
   Folder,
@@ -209,6 +216,71 @@ class WailsAdapter implements NoteCoreApi {
 
   async saveAttachment(id: string): Promise<boolean> {
     return (await this.svc.SaveAttachment(id)) as boolean;
+  }
+
+  async listAllAttachments(): Promise<AttachmentRef[]> {
+    return ((await this.svc.ListAllAttachments()) as AttachmentRef[] | null) ?? [];
+  }
+
+  async listArchive(id: string): Promise<ArchiveListing> {
+    const r = (await this.svc.ListArchive(id)) as Partial<ArchiveListing> | null;
+    return { entries: r?.entries ?? [], truncated: r?.truncated ?? false };
+  }
+
+  async openAttachment(id: string): Promise<void> {
+    await this.svc.OpenAttachment(id);
+  }
+
+  async shareToFile(options: ShareOptions): Promise<ShareSaved> {
+    return (await this.svc.ShareToFile(options)) as ShareSaved;
+  }
+
+  async shareStart(options: ShareOptions): Promise<LanShare> {
+    return (await this.svc.ShareStart(options)) as LanShare;
+  }
+
+  async shareStatus(): Promise<ShareStatus> {
+    return ((await this.svc.ShareStatus()) as ShareStatus | null) ?? { state: 'idle' };
+  }
+
+  async shareStop(): Promise<void> {
+    await this.svc.ShareStop();
+  }
+
+  private toImport(r: unknown): ImportResult {
+    const x = r as Partial<ImportResult> | null;
+    const rep = x?.report;
+    return {
+      cancelled: x?.cancelled ?? false,
+      needsPassphrase: x?.needsPassphrase ?? false,
+      wrongPassphrase: x?.wrongPassphrase ?? false,
+      pendingId: x?.pendingId ?? '',
+      report: {
+        imported: rep?.imported ?? 0,
+        skipped: rep?.skipped ?? 0,
+        renamed: rep?.renamed ?? 0,
+        foldersCreated: rep?.foldersCreated ?? 0,
+        attachments: rep?.attachments ?? 0,
+        attachmentsSkipped: rep?.attachmentsSkipped ?? 0,
+        titles: rep?.titles ?? []
+      }
+    };
+  }
+
+  async importFromFile(): Promise<ImportResult> {
+    return this.toImport(await this.svc.ImportFromFile());
+  }
+
+  async importFromUrl(url: string): Promise<ImportResult> {
+    return this.toImport(await this.svc.ImportFromURL(url));
+  }
+
+  async importPending(id: string, passphrase: string): Promise<ImportResult> {
+    return this.toImport(await this.svc.ImportPending(id, passphrase));
+  }
+
+  async cancelPending(): Promise<void> {
+    await this.svc.CancelPending();
   }
 
   async appInfo(): Promise<AppInfo> {

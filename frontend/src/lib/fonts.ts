@@ -32,7 +32,6 @@ export const FONTS: FontOption[] = [
   f('lora', 'Lora', 'serif', 'Lora', SERIF_FALLBACK),
   f('literata', 'Literata', 'serif', 'Literata', SERIF_FALLBACK),
   f('newsreader', 'Newsreader', 'serif', 'Newsreader', SERIF_FALLBACK),
-  f('merriweather', 'Merriweather', 'serif', 'Merriweather', SERIF_FALLBACK),
   f('crimson', 'Crimson Pro', 'serif', 'Crimson Pro', SERIF_FALLBACK),
   f('garamond', 'EB Garamond', 'serif', 'EB Garamond', SERIF_FALLBACK),
   f('fraunces', 'Fraunces', 'serif', 'Fraunces', SERIF_FALLBACK),

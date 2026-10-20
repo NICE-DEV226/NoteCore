@@ -24,6 +24,7 @@
   import { api } from '../api/client';
   import { refreshReview } from '../stores/review';
   import { openGuide } from '../stores/guide';
+  import { importOpen, shareDialog } from '../stores/ui';
 
   let dialogEl = $state<HTMLDivElement | null>(null);
 
@@ -419,6 +420,14 @@
             Tout reste sur cet ordinateur. Une sauvegarde est vérifiée avant d'être restaurée.
           </p>
           <div class="actions">
+            <button class="action" onclick={() => { close(); shareDialog.set({ scope: 'all', id: '' }); }}>
+              <Icon name="share" size={16} />
+              <span><strong>Partager des notes sans connexion</strong><small>Fichier ou envoi direct sur le réseau local</small></span>
+            </button>
+            <button class="action" onclick={() => { close(); importOpen.set(true); }}>
+              <Icon name="upload" size={16} />
+              <span><strong>Importer des notes</strong><small>Paquet NoteCore, archive ou fichiers Markdown</small></span>
+            </button>
             <button class="action" onclick={() => run(exportAllNotes)}>
               <Icon name="download" size={16} />
               <span><strong>Exporter les notes</strong><small>Archive Markdown lisible partout</small></span>

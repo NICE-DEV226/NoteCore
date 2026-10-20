@@ -8,6 +8,7 @@
 import { derived, get, writable } from 'svelte/store';
 import { api } from '../api/client';
 import { refreshReview, scheduleReviewRefresh } from './review';
+import { filesOpen } from './files';
 import type {
   Folder,
   Note,
@@ -301,16 +302,33 @@ export async function initWorkspace(): Promise<void> {
   document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
+/** Relit notes et dossiers (après un import, par exemple), sans toucher à la sélection. */
+export async function reloadData(): Promise<void> {
+  const [loadedNotes, loadedFolders] = await Promise.all([api.listNotes(), api.listFolders()]);
+  notes.set(loadedNotes ?? []);
+  folders.set(loadedFolders ?? []);
+  void refreshReview();
+}
+
 /** Retourne à l'accueil : aucune note ouverte, modifications d'abord écrites. */
 export async function goHome(): Promise<void> {
   await flushSave();
+  filesOpen.set(false);
   selectedNoteId.set(null);
+}
+
+/** Ouvre la vue « Fichiers » (toutes les pièces jointes) à la place de l'éditeur. */
+export async function goFiles(): Promise<void> {
+  await flushSave();
+  selectedNoteId.set(null);
+  filesOpen.set(true);
 }
 
 /** Sélectionne une note en forçant d'abord l'écriture des modifications en attente. */
 export async function selectNote(id: string): Promise<void> {
   if (id === get(selectedNoteId)) return;
   await flushSave();
+  filesOpen.set(false);
   selectedNoteId.set(id);
 }
 
@@ -321,6 +339,7 @@ export async function createNote(folderId: string | null = null): Promise<void> 
     notes.update((list) => [...list, note]);
     currentView.set({ kind: 'all' });
     searchQuery.set('');
+    filesOpen.set(false);
     selectedNoteId.set(note.id);
     saveState.set('saved');
   } catch {
