@@ -16,6 +16,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 ## Sommaire
 
 - [Fonctionnalités](#fonctionnalités)
+- [Fichiers joints, partage et import](#fichiers-joints-partage-et-import)
 - [Architecture](#architecture)
 - [Installer](#installer)
 - [Prérequis](#prérequis)
@@ -58,6 +59,43 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - Personnalisation : 22 polices embarquées (interface, texte, titres, code), taille, interligne, graisse, largeur, couleur d'accent, densité, préréglages. Ces réglages sont **locaux et sans effet sur la note** — le Markdown reste portable.
 - Palette de commandes (`Ctrl/Cmd+K`), modes Éditer / Scinder / Aperçu, mode concentration (`Ctrl/Cmd+\`), paramètres (`Ctrl/Cmd+,`).
 - Accessibilité : navigation clavier, focus piégé dans les boîtes de confirmation, annonces `aria-live`, contrastes texte/fond tenus au-dessus de 4,5:1.
+
+## Fichiers joints, partage et import
+
+### Lire ses fichiers joints
+
+- **Dans une note** : cliquez sur un fichier joint (la pastille sous le titre) ou sur une image de l'aperçu. La visionneuse s'ouvre : `←` `→` pour passer d'un fichier à l'autre, `+` `-` pour zoomer, `Échap` pour fermer.
+- **Tous les fichiers d'un coup** : *Fichiers* dans la barre latérale. Filtrez par type (PDF, image, tableau…) ou par nom, et cliquez sur « Aller à la note » pour retrouver le contexte.
+- **Ce qui s'affiche** : images, PDF, Markdown, texte et code, tableaux CSV, contenu d'une archive `.zip` (liste, sans extraction), audio et vidéo.
+- **Ouvrir avec une autre application** : bouton *Ouvrir* de la visionneuse. Pour votre sécurité, seuls les types passifs (documents, images, son, vidéo, archives) sont confiés au système ; tout autre fichier se lit dans NoteCore ou s'enregistre avec *Enregistrer*.
+
+### Partager des notes sans Internet
+
+1. Ouvrez la note (ou le dossier) puis le bouton **Partager** de la barre du haut — ou `Ctrl/Cmd+K` → « Partager des notes… ».
+2. Choisissez **ce qui part** : cette note, ce dossier ou toutes vos notes.
+3. Choisissez le **format** : *Paquet NoteCore* (garde dossiers, étiquettes et fichiers joints ; se réimporte à l'identique) ou *Markdown (.zip)* (lisible partout, sans NoteCore).
+4. Facultatif : un **mot de passe** (paquet NoteCore). Conseillé sur un Wi-Fi partagé ; s'il est perdu, le paquet est illisible.
+5. Transmettez :
+   - **Enregistrer un fichier…** : puis donnez-le comme n'importe quel fichier — clé USB, Bluetooth, dossier partagé, messagerie locale.
+   - **Envoyer sur le réseau local** : un lien et un **QR code** s'affichent. Sur l'autre appareil, scannez le code (un téléphone télécharge le fichier dans son navigateur) ou, avec NoteCore, *Importer → Depuis un autre appareil* et collez l'adresse. Le lien **ne sert qu'une fois** et expire au bout de **10 minutes**.
+
+> Les deux appareils doivent être sur **le même réseau** : Wi-Fi de la salle, ou point d'accès / partage de connexion d'un téléphone. Aucune connexion à Internet n'est nécessaire. Sous Windows, le pare-feu demande l'autorisation la première fois : choisissez *Réseaux privés*.
+
+### Importer
+
+*Paramètres → Données → Importer des notes* (ou `Ctrl/Cmd+K` → « Importer des notes… »), ou le bouton *Importer* de la vue Fichiers. NoteCore lit les paquets `.notecore`, les archives d'export (`.zip`) et les fichiers Markdown (`.md`) d'autres outils, en reconnaissant leur en-tête de titre et d'étiquettes.
+
+**Importer n'écrase jamais rien** : une note identique à l'une des vôtres est ignorée (réimporter le même paquet n'ajoute donc rien), une note de même titre mais différente est ajoutée à côté avec « (importée) » dans son titre. Un rapport indique ce qui a été importé, ignoré ou ajouté.
+
+### Dépannage
+
+| Symptôme | Cause probable |
+| --- | --- |
+| « Aucun réseau local détecté » | L'ordinateur n'est connecté à aucun Wi-Fi ni câble : rejoignez le même réseau que l'autre appareil, ou activez un point d'accès. |
+| L'autre appareil n'atteint pas le lien | Pas le même réseau, ou pare-feu : autorisez NoteCore sur les *réseaux privés*. Certains Wi-Fi publics isolent les appareils entre eux — utilisez un point d'accès. |
+| « Cet envoi a déjà été utilisé ou a expiré » | Le lien ne sert qu'une fois, 10 minutes : relancez un envoi. |
+| « Mot de passe incorrect, ou fichier altéré » | Mauvaise saisie, ou fichier modifié pendant le transfert. |
+| « Adresse refusée : elle n'est pas sur le réseau local » | NoteCore ne se connecte qu'à des appareils de votre réseau local, jamais à Internet. |
 
 ## Architecture
 

@@ -9,7 +9,7 @@
   "frontend:dir": "../frontend",
   "info": {
     "productName": "NoteCore",
-    "productVersion": "0.2.0",
+    "productVersion": "0.3.0",
     "copyright": "Copyright © 2026 NoteCore",
     "comments": "Prise de notes structurée, hors ligne, pour étudiants et développeurs."
   }
