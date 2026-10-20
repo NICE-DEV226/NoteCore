@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,8 +41,8 @@ func (n *NoteCore) ListArchive(id string) (ArchiveListing, error) {
 const tempPrefix = "notecore-open-"
 
 // OpenAttachment ouvre une pièce jointe avec l'application par défaut du
-// système. Les types que le système exécuterait (.exe, .bat, .ps1, .sh…) sont
-// refusés : une pièce jointe est une donnée, jamais un programme.
+// système, mais seulement pour les types passifs (liste blanche, voir
+// notes.IsOpenable) : une pièce jointe est une donnée, jamais un programme.
 func (n *NoteCore) OpenAttachment(id string) error {
 	if id == "" {
 		return fmt.Errorf("pièce jointe non identifiée")
@@ -51,8 +52,8 @@ func (n *NoteCore) OpenAttachment(id string) error {
 	if err != nil {
 		return err
 	}
-	if notes.IsRiskyFilename(data.Filename) {
-		return fmt.Errorf("pour votre sécurité, NoteCore n'ouvre pas « %s » avec une autre application (ce type de fichier peut s'exécuter). Utilisez « Enregistrer sous… » si vous en avez besoin", data.Filename)
+	if !notes.IsOpenable(data.Filename) {
+		return fmt.Errorf("pour votre sécurité, NoteCore ne confie « %s » à une autre application que s'il s'agit d'un document, d'une image, d'un son, d'une vidéo ou d'une archive. Lisez-le dans NoteCore si possible, ou utilisez « Enregistrer sous… »", data.Filename)
 	}
 	raw, err := base64.StdEncoding.DecodeString(data.DataBase64)
 	if err != nil {
@@ -68,6 +69,7 @@ func (n *NoteCore) OpenAttachment(id string) error {
 		_ = os.RemoveAll(dir)
 		return fmt.Errorf("copie temporaire : %w", err)
 	}
+	markFromInternet(path)
 	n.mu.Lock()
 	n.tempDirs = append(n.tempDirs, dir)
 	n.mu.Unlock()
@@ -95,4 +97,15 @@ func SweepTemp() {
 			_ = os.RemoveAll(m)
 		}
 	}
+}
+
+// markFromInternet marque la copie temporaire comme venant d'une source non
+// fiable (zone Internet, ZoneId=3). Sous Windows, les protections du système
+// (SmartScreen, mode protégé d'Office) s'appliquent alors comme pour un
+// fichier téléchargé. Sans effet — et sans erreur — ailleurs.
+func markFromInternet(path string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	_ = os.WriteFile(path+":Zone.Identifier", []byte("[ZoneTransfer]\r\nZoneId=3\r\n"), 0o600)
 }

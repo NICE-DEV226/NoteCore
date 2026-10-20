@@ -253,29 +253,21 @@ func (m *Manager) Status() Status {
 // ErrNotLocal : l'adresse n'est pas sur le réseau local.
 var ErrNotLocal = errors.New("adresse refusée : elle n'est pas sur le réseau local (NoteCore ne se connecte jamais à Internet)")
 
+// loopbackAllowed n'est vrai que dans les tests : l'envoi à soi-même n'a pas de
+// sens, et le bouclage est la porte d'entrée classique des attaques par
+// redirection vers un service local.
+var loopbackAllowed = false
+
 func isLocalIP(ip net.IP) bool {
-	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+	if ip.IsLoopback() {
+		return loopbackAllowed
+	}
+	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
-// Fetch télécharge un envoi d'un autre appareil. Seules les adresses du
-// réseau local sont acceptées, sans proxy ni redirection : l'application
-// garde sa promesse de ne jamais contacter Internet.
-func Fetch(ctx context.Context, rawURL string) ([]byte, error) {
-	u, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || u.Host == "" {
-		return nil, errors.New("adresse invalide : collez le lien affiché par l'autre appareil")
-	}
-	if u.Scheme != "http" {
-		return nil, errors.New("adresse invalide : le lien doit commencer par http://")
-	}
-	if !strings.HasPrefix(u.Path, "/s/") {
-		return nil, errors.New("adresse invalide : ce n'est pas un lien d'envoi NoteCore")
-	}
-	if parts := strings.Split(strings.Trim(u.Path, "/"), "/"); len(parts) == 2 { // /s/<jeton> → fichier
-		u.Path = "/s/" + parts[1] + "/download"
-	}
-
-	host := u.Hostname()
+// resolveLocal résout un nom et refuse tout ce qui n'est pas sur le réseau
+// local — si UNE seule adresse renvoyée est publique, tout est refusé.
+func resolveLocal(ctx context.Context, host string) ([]net.IP, error) {
 	var ips []net.IP
 	if ip := net.ParseIP(host); ip != nil {
 		ips = []net.IP{ip}
@@ -296,10 +288,61 @@ func Fetch(ctx context.Context, rawURL string) ([]byte, error) {
 			return nil, ErrNotLocal
 		}
 	}
+	return ips, nil
+}
+
+// dialLocal établit la connexion en se servant UNIQUEMENT d'une adresse qu'il
+// vient de valider : la vérification et la connexion utilisent la même
+// résolution, un serveur DNS malveillant ne peut donc pas répondre « local »
+// à la vérification puis « public » à la connexion (DNS rebinding).
+func dialLocal(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := resolveLocal(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	d := net.Dialer{Timeout: 10 * time.Second}
+	var last error
+	for _, ip := range ips {
+		conn, err := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		last = err
+	}
+	return nil, last
+}
+
+// Fetch télécharge un envoi d'un autre appareil. Seules les adresses du
+// réseau local sont acceptées, sans proxy ni redirection : l'application
+// garde sa promesse de ne jamais contacter Internet.
+func Fetch(ctx context.Context, rawURL string) ([]byte, error) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Host == "" {
+		return nil, errors.New("adresse invalide : collez le lien affiché par l'autre appareil")
+	}
+	if u.Scheme != "http" {
+		return nil, errors.New("adresse invalide : le lien doit commencer par http://")
+	}
+	if !strings.HasPrefix(u.Path, "/s/") {
+		return nil, errors.New("adresse invalide : ce n'est pas un lien d'envoi NoteCore")
+	}
+	if parts := strings.Split(strings.Trim(u.Path, "/"), "/"); len(parts) == 2 { // /s/<jeton> → fichier
+		u.Path = "/s/" + parts[1] + "/download"
+	}
+
+	// Contrôle préalable, pour un message clair ; la connexion elle-même est
+	// verrouillée par dialLocal (voir plus haut).
+	if _, err := resolveLocal(ctx, u.Hostname()); err != nil {
+		return nil, err
+	}
 
 	client := &http.Client{
 		Timeout:       2 * time.Minute,
-		Transport:     &http.Transport{Proxy: nil},
+		Transport:     &http.Transport{Proxy: nil, DialContext: dialLocal},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)

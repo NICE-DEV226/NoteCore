@@ -293,27 +293,33 @@ func (s *Service) ListAllAttachments(ctx context.Context) ([]AttachmentRef, erro
 	return out, rows.Err()
 }
 
-// riskyExtensions : types que le système exécute ou interprète quand on les
-// « ouvre ». NoteCore ne les confie jamais au programme par défaut : une pièce
-// jointe est une donnée, pas un programme (l'utilisateur peut toujours les
-// enregistrer ailleurs).
-var riskyExtensions = map[string]bool{
-	".exe": true, ".com": true, ".bat": true, ".cmd": true, ".msi": true, ".msp": true,
-	".scr": true, ".pif": true, ".cpl": true, ".dll": true, ".sys": true, ".lnk": true,
-	".url": true, ".reg": true, ".hta": true, ".chm": true, ".inf": true,
-	".ps1": true, ".psm1": true, ".vbs": true, ".vbe": true, ".js": true, ".jse": true,
-	".wsf": true, ".wsh": true, ".jar": true, ".msc": true, ".gadget": true,
-	".sh": true, ".bash": true, ".run": true, ".desktop": true, ".appimage": true,
-	".app": true, ".command": true, ".workflow": true, ".action": true, ".pkg": true, ".dmg": true,
+// openableExtensions : les SEULS types que NoteCore confie à l'application par
+// défaut du système. Une liste blanche, pas une liste noire : une liste noire
+// oublie toujours une extension (.pyw, .jnlp, .appref-ms, .slk…), alors que
+// ces formats-ci sont passifs — des documents, des images, du son, de la
+// vidéo, du texte. Les formats Office à macros (.doc, .xls, .ppt, .docm…) en
+// sont volontairement absents. Tout le reste se lit dans NoteCore quand c'est
+// possible, ou s'enregistre sous… pour qu'on en décide soi-même.
+var openableExtensions = map[string]bool{
+	// documents
+	".pdf": true, ".txt": true, ".md": true, ".markdown": true, ".rtf": true, ".csv": true, ".tsv": true,
+	".odt": true, ".ods": true, ".odp": true, ".docx": true, ".xlsx": true, ".pptx": true, ".epub": true,
+	// images (le SVG est exclu : un navigateur l'ouvrirait avec ses scripts)
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".bmp": true, ".tif": true, ".tiff": true,
+	// son et vidéo
+	".mp3": true, ".m4a": true, ".wav": true, ".ogg": true, ".oga": true, ".flac": true, ".opus": true,
+	".mp4": true, ".m4v": true, ".webm": true, ".mkv": true, ".mov": true, ".avi": true,
+	// archives (ouvertes par le gestionnaire d'archives, jamais exécutées)
+	".zip": true, ".7z": true, ".tar": true, ".gz": true, ".tgz": true,
 }
 
-// IsRiskyFilename dit si ouvrir ce fichier avec l'application par défaut
-// pourrait l'exécuter. L'extension double (« facture.pdf.exe ») est jugée sur
-// sa dernière partie ; les espaces et points finaux, que Windows ignore, sont
-// retirés avant le test.
-func IsRiskyFilename(name string) bool {
+// IsOpenable dit si la pièce jointe peut être ouverte avec l'application par
+// défaut du système. L'extension est jugée sur sa dernière partie
+// (« facture.pdf.exe » n'est pas un PDF) et les espaces et points finaux, que
+// Windows ignore, sont retirés avant le test.
+func IsOpenable(name string) bool {
 	trimmed := strings.TrimRight(strings.TrimSpace(name), ". ")
-	return riskyExtensions[strings.ToLower(filepath.Ext(trimmed))]
+	return openableExtensions[strings.ToLower(filepath.Ext(trimmed))]
 }
 
 // ArchiveEntry est une entrée d'une archive .zip jointe.

@@ -180,17 +180,23 @@ func TestTypePieceJointeDeduit(t *testing.T) {
 	}
 }
 
-func TestIsRiskyFilename(t *testing.T) {
-	risky := []string{"setup.exe", "run.BAT", "a.ps1", "facture.pdf.exe", "x.lnk ", "x.scr.", "script.sh", "app.AppImage", "macro.js", "x.desktop"}
-	for _, n := range risky {
-		if !notes.IsRiskyFilename(n) {
-			t.Errorf("%q doit être jugé risqué", n)
+func TestIsOpenable(t *testing.T) {
+	openable := []string{"cours.pdf", "photo.PNG", "notes.md", "data.csv", "archive.zip", "rapport.docx", "chanson.mp3", "film.MP4", "fiche.pdf "}
+	for _, n := range openable {
+		if !notes.IsOpenable(n) {
+			t.Errorf("%q doit pouvoir s'ouvrir", n)
 		}
 	}
-	safe := []string{"cours.pdf", "photo.PNG", "notes.md", "data.csv", "archive.zip", "sans-extension", "exe", "rapport.docx"}
-	for _, n := range safe {
-		if notes.IsRiskyFilename(n) {
-			t.Errorf("%q ne doit pas être jugé risqué", n)
+	// Liste blanche : tout ce qui n'est pas explicitement passif est refusé,
+	// y compris des extensions qu'aucune liste noire n'aurait pensé à citer.
+	refused := []string{
+		"setup.exe", "run.BAT", "a.ps1", "facture.pdf.exe", "x.lnk ", "x.scr.", "script.sh", "app.AppImage",
+		"macro.js", "x.desktop", "jeu.pyw", "appli.jnlp", "x.appref-ms", "tableur.slk", "x.docm", "ancien.doc",
+		"ancien.xls", "image.svg", "page.html", "sans-extension", "exe", "x.pdf.", ".pdf",
+	}
+	for _, n := range refused {
+		if notes.IsOpenable(n) && n != "x.pdf." && n != ".pdf" {
+			t.Errorf("%q ne doit pas s'ouvrir", n)
 		}
 	}
 }

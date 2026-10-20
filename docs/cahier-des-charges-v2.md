@@ -29,7 +29,7 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 
 ### 2.2 bis Ajouté en V2.1 (ADR-008)
 
-- **Lire les fichiers joints** : visionneuse intégrée (images, PDF, texte et code, Markdown, tableaux, contenu d'archives, audio, vidéo), vue « Fichiers » pour tout parcourir, ouverture avec l'application du système (types exécutables refusés).
+- **Lire les fichiers joints** : visionneuse intégrée (images, PDF, texte et code, Markdown, tableaux, contenu d'archives, audio, vidéo), vue « Fichiers » pour tout parcourir, ouverture avec l'application du système (liste blanche de types passifs).
 - **Partager sans connexion Internet** : paquet `.notecore` (ou archive Markdown) enregistré dans un fichier, ou envoi direct sur le réseau local (lien + QR code, un téléchargement, 10 minutes), mot de passe facultatif.
 - **Importer** : paquet NoteCore, archive d'export, fichiers Markdown d'autres outils ; **n'écrase jamais** une note existante.
 
@@ -112,7 +112,7 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 10. Un paquet partagé puis importé restitue notes, étiquettes, dossiers et fichiers joints ; le réimporter n'ajoute rien ; importer ne modifie aucune note existante.
 11. Un paquet protégé est illisible sans le bon mot de passe, et un import refusé n'écrit rien.
 12. L'envoi sur le réseau local ne sert qu'un téléchargement, expire, et ne répond pas à un mauvais jeton ; la réception refuse toute adresse hors du réseau local.
-13. Un fichier joint exécutable (`.exe`, `.sh`…) n'est jamais confié à l'application par défaut du système.
+13. Seuls les types passifs d'une liste blanche (documents, images, son, vidéo, archives) sont confiés à l'application par défaut du système ; tout autre fichier joint est refusé.
 
 ## 6. Risques
 

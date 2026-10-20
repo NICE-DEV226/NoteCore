@@ -11,6 +11,8 @@ import (
 
 func startLoopback(t *testing.T, data []byte, ttl time.Duration) (*Manager, SessionInfo) {
 	t.Helper()
+	loopbackAllowed = true
+	t.Cleanup(func() { loopbackAllowed = false })
 	m := &Manager{allowLoopback: true}
 	info, err := m.Start(data, "essai.notecore", false, ttl)
 	if err != nil {
@@ -100,6 +102,8 @@ func TestEnvoiExpireEtSArrete(t *testing.T) {
 }
 
 func TestUnNouvelEnvoiRemplaceLePrecedent(t *testing.T) {
+	loopbackAllowed = true
+	t.Cleanup(func() { loopbackAllowed = false })
 	m := &Manager{allowLoopback: true}
 	first, _ := m.Start([]byte("un"), "a.notecore", false, time.Minute)
 	second, err := m.Start([]byte("deux"), "b.notecore", false, time.Minute)
@@ -132,5 +136,27 @@ func TestReceptionRefuseInternet(t *testing.T) {
 	}
 	if _, err := Fetch(context.Background(), "http://8.8.8.8/s/abc"); err != ErrNotLocal {
 		t.Errorf("hors réseau local : %v", err)
+	}
+}
+
+// Hors des tests, le bouclage est refusé : une adresse 127.0.0.1 ne peut pas
+// servir à atteindre un service local de la machine.
+func TestReceptionRefuseLeBouclage(t *testing.T) {
+	for _, u := range []string{"http://127.0.0.1:8080/s/abc", "http://localhost:8080/s/abc", "http://[::1]:8080/s/abc"} {
+		if _, err := Fetch(context.Background(), u); err == nil {
+			t.Errorf("%q doit être refusé", u)
+		}
+	}
+}
+
+// La connexion n'utilise que l'adresse validée : une résolution qui change entre
+// la vérification et la connexion (DNS rebinding) est donc sans effet, et une
+// adresse publique est refusée au moment même de la connexion.
+func TestDialLocalRefuseUneAdressePublique(t *testing.T) {
+	if _, err := dialLocal(context.Background(), "tcp", "8.8.8.8:80"); err != ErrNotLocal {
+		t.Errorf("connexion à une adresse publique : %v", err)
+	}
+	if _, err := dialLocal(context.Background(), "tcp", "127.0.0.1:9"); err != ErrNotLocal {
+		t.Errorf("connexion au bouclage : %v", err)
 	}
 }

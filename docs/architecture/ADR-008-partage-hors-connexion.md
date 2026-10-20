@@ -22,7 +22,7 @@ Deux manques :
    - *Fichier* : enregistré par le dialogue système (écriture atomique) ; tout moyen de transmettre un fichier convient (clé USB, Bluetooth, dossier partagé…).
    - *Réseau local* : NoteCore ouvre un serveur HTTP éphémère sur le port choisi par le système, **un seul fichier, derrière un jeton aléatoire de 128 bits, pour un seul téléchargement, 10 minutes au plus** ; un lien et un QR code sont affichés. Un navigateur de téléphone peut le télécharger (page d'accueil minimale) ; NoteCore le reçoit par « Importer → Depuis un autre appareil ».
 5. **Le serveur ne répond qu'au bon jeton** (404 muet sinon, comparaison à temps constant), refuse toute méthode autre que GET/HEAD, vide les données de la mémoire à la clôture et s'arrête seul (téléchargement terminé, délai écoulé, arrêt manuel). Un nouvel envoi ferme le précédent.
-6. **La réception n'accepte que des adresses du réseau local** (privées, locales de lien ou de bouclage), en `http`, sans proxy ni redirection, chemin `/s/…` seulement : la promesse « aucune connexion à Internet » est tenue par le code, pas par la bonne volonté.
+6. **La réception n'accepte que des adresses du réseau local** (privées ou locales de lien ; le bouclage est refusé), en `http`, sans proxy ni redirection, chemin `/s/…` seulement : la promesse « aucune connexion à Internet » est tenue par le code, pas par la bonne volonté. La vérification et la connexion partagent **la même résolution** (connexion ouverte sur l'adresse validée) : un serveur DNS qui répondrait « local » au contrôle puis « public » à la connexion (DNS rebinding) est sans effet.
 
 ### Import
 
@@ -36,7 +36,7 @@ Deux manques :
 
 12. **Visionneuse intégrée** : images (zoom), PDF (**pdf.js**, version « legacy », Apache-2.0, chargé à la demande), Markdown, texte et code, tableaux CSV/TSV, contenu d'une archive `.zip` (liste sans extraction), audio, vidéo. Rien n'est exécuté : le texte passe par `textContent`, le Markdown par le moteur échappé de NoteCore, le PDF par pdf.js dans son worker.
 13. **Vue « Fichiers »** : toutes les pièces jointes de toutes les notes, filtre par type et par nom, vignettes d'images chargées à l'approche de l'écran, retour à la note d'origine.
-14. **Ouvrir avec le système** : copie temporaire (0600, dossier propre à l'ouverture) puis ouverture par l'application par défaut ; les copies sont supprimées à la fermeture et, au démarrage, si elles datent de plus de 24 h. **Les types que le système exécute ou interprète** (`.exe`, `.bat`, `.ps1`, `.sh`, `.lnk`, `.js`, `.jar`, `.desktop`, `.app`…) **sont refusés** — l'extension double (`facture.pdf.exe`) est jugée sur sa fin — : une pièce jointe est une donnée, jamais un programme. « Enregistrer sous » reste possible.
+14. **Ouvrir avec le système** : copie temporaire (0600, dossier propre à l'ouverture, marquée « zone Internet » sous Windows pour que SmartScreen et le mode protégé d'Office s'appliquent), puis ouverture par l'application par défaut ; les copies sont supprimées à la fermeture et, au démarrage, si elles datent de plus de 24 h. **Liste blanche** de types passifs (documents PDF/texte/ODF/OOXML sans macros, images, son, vidéo, archives) ; tout le reste est refusé — une liste noire oublie toujours une extension (`.pyw`, `.jnlp`, `.appref-ms`…). L'extension double (`facture.pdf.exe`) est jugée sur sa fin ; les formats Office à macros et le SVG (scripts dans un navigateur) sont exclus. Les autres types se lisent dans NoteCore quand c'est possible, ou s'enregistrent avec « Enregistrer sous… ».
 
 ## Options considérées
 
