@@ -39,7 +39,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - Éditeur Markdown et aperçu côte à côte.
 - Barre de mise en forme : titres, gras, italique, mise en évidence, code en ligne et en bloc, listes — à puces, ordonnée, cases à cocher —, citations, liens, images, séparateur, effacement de la mise en forme.
 - Raccourcis `Ctrl/Cmd+B` (gras) et `Ctrl/Cmd+I` (italique) dans l'éditeur.
-- Pièces jointes locales : une image ou un fichier se joint à une note, 10 Mio au maximum par pièce jointe.
+- Pièces jointes locales : une image ou un fichier se joint à une note, 10 Mio au maximum par pièce jointe. Elles se **lisent dans NoteCore** (images, PDF, texte et code, Markdown, tableaux CSV, contenu d'une archive .zip, audio, vidéo) et se parcourent toutes depuis la vue **Fichiers**.
 
 **Révision**
 
@@ -47,10 +47,15 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - Séance au clavier (`Espace`, `1`–`4`, `Z` pour annuler), planifiée par l'algorithme **FSRS**, entièrement local.
 - Accueil : cartes à voir, série de jours, activité sur 14 jours, maîtrise par dossier et par étiquette.
 
+**Partage hors connexion**
+
+- **Partager** une note, un dossier ou tout : en **fichier** `.notecore` (clé USB, Bluetooth, dossier partagé…) ou en **envoi direct sur le réseau local** (lien et QR code, un seul téléchargement, 10 minutes), sans Internet. Mot de passe facultatif (AES-256).
+- **Importer** un paquet NoteCore, une archive d'export ou des fichiers Markdown d'autres outils. Importer **n'écrase jamais** une note existante.
+
 **Confort**
 
 - Thème clair ou sombre, aligné sur le système par défaut.
-- Personnalisation : 23 polices embarquées (interface, texte, titres, code), taille, interligne, graisse, largeur, couleur d'accent, densité, préréglages. Ces réglages sont **locaux et sans effet sur la note** — le Markdown reste portable.
+- Personnalisation : 22 polices embarquées (interface, texte, titres, code), taille, interligne, graisse, largeur, couleur d'accent, densité, préréglages. Ces réglages sont **locaux et sans effet sur la note** — le Markdown reste portable.
 - Palette de commandes (`Ctrl/Cmd+K`), modes Éditer / Scinder / Aperçu, mode concentration (`Ctrl/Cmd+\`), paramètres (`Ctrl/Cmd+,`).
 - Accessibilité : navigation clavier, focus piégé dans les boîtes de confirmation, annonces `aria-live`, contrastes texte/fond tenus au-dessus de 4,5:1.
 
@@ -70,6 +75,7 @@ backend/           Go + Wails v2
   internal/search      Recherche FTS5 et construction des extraits
   internal/transfer    Export, sauvegarde, validation, restauration
   internal/review      Cartes de révision, planification FSRS, maîtrise
+  internal/share       Partage hors connexion, import, envoi sur le réseau local
   internal/preferences Préférences locales
   internal/bindings    Méthodes exposées à Wails
 
@@ -227,7 +233,7 @@ Base locale SQLite, en mode WAL :
 
 **Mise à niveau.** Installer une version plus récente conserve vos notes : la base vit hors du dossier d'installation, donc remplacer le binaire ne touche à rien. Si la nouvelle version doit migrer le schéma de la base, une copie de celle-ci est écrite à côté — avant la moindre écriture — et son chemin est affiché au lancement. Rien n'est perdu, même si une migration venait à échouer.
 
-**Réseau.** L'application n'ouvre aucune connexion : ni compte, ni télémétrie, ni synchronisation. Les images sont importées depuis le poste et copiées à côté des notes à l'export — aucun hôte n'est contacté.
+**Réseau.** L'application ne se connecte jamais à Internet : ni compte, ni télémétrie, ni synchronisation. Le seul trafic réseau est le **partage sur le réseau local**, que vous lancez vous-même : un serveur éphémère (un fichier, un téléchargement, 10 minutes, jeton aléatoire) ou la réception d'un envoi, limitée aux adresses de votre réseau local. Sous Windows, le pare-feu peut demander l'autorisation la première fois (réseaux privés).
 
 **Pièces jointes.** Les octets vivent dans la base (table `attachments`), donc sauvegardés et restaurés avec le reste, et supprimés avec leur note. Aucune copie externe, aucun service tiers.
 
@@ -237,6 +243,7 @@ Base locale SQLite, en mode WAL :
 
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — architecture, modèle de données, sauvegardes, sécurité
 - [`docs/architecture/ADR-001`](docs/architecture/ADR-001-stack-et-style.md) à [`ADR-007`](docs/architecture/ADR-007-revision-espacee.md) — décisions techniques et raisons
+- [`ADR-008`](docs/architecture/ADR-008-partage-hors-connexion.md) — partage hors connexion, import et lecture des fichiers joints
 - [`docs/cahier-des-charges-v2.md`](docs/cahier-des-charges-v2.md) — V2 : réviser ses notes (périmètre, critères, risques)
 - [`docs/revue-ergonomie.md`](docs/revue-ergonomie.md) — revue d'ergonomie et correctifs appliqués
 - [`docs/procedure-build.md`](docs/procedure-build.md) — build et développement en détail
