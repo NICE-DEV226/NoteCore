@@ -31,10 +31,12 @@ type Note struct {
 }
 
 type Folder struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID string `json:"id"`
+	// ParentID : dossier contenant celui-ci (nil = racine), ADR-009.
+	ParentID  *string `json:"parentId,omitempty"`
+	Name      string  `json:"name"`
+	CreatedAt string  `json:"createdAt"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 // Patch décrit les champs modifiables d'une note.
@@ -75,25 +77,6 @@ func (s *Service) ListNotes(ctx context.Context) ([]Note, error) {
 	}
 	defer rows.Close()
 	return collectNotes(rows)
-}
-
-func (s *Service) ListFolders(ctx context.Context) ([]Folder, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, created_at, updated_at FROM folders ORDER BY name COLLATE NOCASE`)
-	if err != nil {
-		return nil, fmt.Errorf("lecture des dossiers : %w", err)
-	}
-	defer rows.Close()
-
-	out := make([]Folder, 0)
-	for rows.Next() {
-		var f Folder
-		if err := rows.Scan(&f.ID, &f.Name, &f.CreatedAt, &f.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan dossier : %w", err)
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
 }
 
 // SearchNotes cherche dans l'index FTS (titre, contenu, étiquettes).
@@ -293,77 +276,6 @@ func (s *Service) DeleteNote(ctx context.Context, id string) error {
 	return nil
 }
 
-// CreateFolder valide l'unicité insensible à la casse (ARCHITECTURE.md §4).
-func (s *Service) CreateFolder(ctx context.Context, name string) (Folder, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return Folder{}, fmt.Errorf("nom de dossier vide")
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	f := Folder{ID: newID(), Name: name, CreatedAt: now, UpdatedAt: now}
-	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO folders (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		f.ID, f.Name, f.CreatedAt, f.UpdatedAt); err != nil {
-		if isUniqueConstraint(err) {
-			return Folder{}, fmt.Errorf("un dossier « %s » existe déjà (majuscules/minuscules confondues)", name)
-		}
-		return Folder{}, fmt.Errorf("création dossier : %w", err)
-	}
-	return f, nil
-}
-
-// RenameFolder préserve les notes : seul le nom change.
-func (s *Service) RenameFolder(ctx context.Context, id, name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Errorf("nom de dossier vide")
-	}
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE folders SET name = ?, updated_at = ? WHERE id = ?`,
-		name, time.Now().UTC().Format(time.RFC3339), id)
-	if err != nil {
-		if isUniqueConstraint(err) {
-			return fmt.Errorf("un dossier « %s » existe déjà (majuscules/minuscules confondues)", name)
-		}
-		return fmt.Errorf("renommage dossier : %w", err)
-	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return fmt.Errorf("dossier %q introuvable", id)
-	}
-	return nil
-}
-
-// DeleteFolder ne détruit jamais les notes (cahier des charges §3.2) : le FK porte
-// ON DELETE SET NULL, chaque note repasse à la racine. Renvoie la
-// liste des notes déplacées pour la réponse d'interface.
-func (s *Service) DeleteFolder(ctx context.Context, folderID string) ([]Note, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("démarrage suppression dossier : %w", err)
-	}
-	defer tx.Rollback()
-
-	// Inventaire avant suppression (règle : aucune perte silencieuse).
-	moved, err := listNotesByFolderInTx(ctx, tx, folderID)
-	if err != nil {
-		return nil, err
-	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM folders WHERE id = ?`, folderID)
-	if err != nil {
-		return nil, fmt.Errorf("suppression dossier : %w", err)
-	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return nil, fmt.Errorf("dossier %q introuvable", folderID)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit suppression dossier : %w", err)
-	}
-	for i := range moved {
-		moved[i].FolderID = nil
-	}
-	return moved, nil
-}
-
 // GetNote lit une note complète (utilisé par l'export).
 func (s *Service) GetNote(ctx context.Context, id string) (Note, error) {
 	row := s.db.QueryRowContext(ctx, `
@@ -383,12 +295,11 @@ func (s *Service) GetNote(ctx context.Context, id string) (Note, error) {
 
 const tagSeparator = "\x1f" // séparateur interne pour tags_text
 
-// contentChanged dit si la note diffère de son état précédent, hors épinglage.
+// contentChanged dit si la note diffère de son état précédent, hors épinglage
+// et hors classement : ranger une note dans un dossier est de l'organisation,
+// pas une modification de son contenu (ADR-009).
 func contentChanged(a, b Note) bool {
 	if a.Title != b.Title || a.Content != b.Content || len(a.Tags) != len(b.Tags) {
-		return true
-	}
-	if (a.FolderID == nil) != (b.FolderID == nil) || (a.FolderID != nil && *a.FolderID != *b.FolderID) {
 		return true
 	}
 	for i := range a.Tags {

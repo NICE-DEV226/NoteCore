@@ -55,9 +55,12 @@ type Package struct {
 
 // Item décrit une note du paquet.
 type Item struct {
-	File        string    `json:"file"`
-	Title       string    `json:"title"`
-	Folder      string    `json:"folder,omitempty"` // NOM du dossier : les identifiants ne voyagent pas
+	File   string `json:"file"`
+	Title  string `json:"title"`
+	Folder string `json:"folder,omitempty"` // NOM du dossier : les identifiants ne voyagent pas
+	// FolderPath : chemin complet (dossiers imbriqués, ADR-009). Absent des
+	// paquets antérieurs, qui n'ont que Folder.
+	FolderPath  []string  `json:"folderPath,omitempty"`
 	Tags        []string  `json:"tags"`
 	Pinned      bool      `json:"pinned,omitempty"`
 	CreatedAt   string    `json:"createdAt"`
@@ -137,7 +140,7 @@ func Build(ctx context.Context, svc *notes.Service, sel Selection, format Format
 	case FormatMarkdown:
 		data, attCount, err = buildMarkdown(ctx, svc, chosen, folders)
 	case FormatNoteCore:
-		data, attCount, err = buildNoteCore(ctx, svc, chosen, folderName, now)
+		data, attCount, err = buildNoteCore(ctx, svc, chosen, folders, now)
 	default:
 		err = fmt.Errorf("format de partage inconnu : %q", format)
 	}
@@ -197,7 +200,7 @@ func buildMarkdown(ctx context.Context, svc *notes.Service, chosen []notes.Note,
 	return data, count, err
 }
 
-func buildNoteCore(ctx context.Context, svc *notes.Service, chosen []notes.Note, folderName map[string]string, now time.Time) ([]byte, int, error) {
+func buildNoteCore(ctx context.Context, svc *notes.Service, chosen []notes.Note, folders []notes.Folder, now time.Time) ([]byte, int, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	manifest := Manifest{Format: FormatShare, Version: 1, CreatedAt: now.UTC().Format(time.RFC3339), Count: len(chosen)}
@@ -216,7 +219,10 @@ func buildNoteCore(ctx context.Context, svc *notes.Service, chosen []notes.Note,
 			item.Tags = []string{}
 		}
 		if n.FolderID != nil {
-			item.Folder = folderName[*n.FolderID]
+			item.FolderPath = transfer.FolderPath(folders, *n.FolderID)
+			if len(item.FolderPath) > 0 {
+				item.Folder = item.FolderPath[len(item.FolderPath)-1]
+			}
 		}
 		w, err := zw.Create(item.File)
 		if err != nil {

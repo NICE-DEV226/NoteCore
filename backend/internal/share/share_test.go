@@ -353,3 +353,52 @@ func TestPerimetres(t *testing.T) {
 	}
 	_ = transfer.FormatExport
 }
+
+// Les dossiers imbriqués voyagent avec leur chemin complet, et deux dossiers
+// de même nom sous des parents différents ne se confondent pas.
+func TestPaquetConserveLArborescence(t *testing.T) {
+	ctx := context.Background()
+	src, dst := newSvc(t), newSvc(t)
+	s3, _ := src.CreateFolder(ctx, "Semestre 3")
+	s4, _ := src.CreateFolder(ctx, "Semestre 4")
+	td3, _ := src.CreateFolderIn(ctx, "TD", s3.ID)
+	td4, _ := src.CreateFolderIn(ctx, "TD", s4.ID)
+	for i, f := range []notes.Folder{td3, td4} {
+		n, _ := src.CreateNote(ctx, fmt.Sprintf("Exercice %d", i), f.ID)
+		body := fmt.Sprintf("corps distinct numéro %d", i)
+		if _, err := src.UpdateNote(ctx, n.ID, notes.Patch{Content: &body}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Le destinataire a déjà un « Semestre 3 / TD » : il est réutilisé, pas dupliqué.
+	pre, _ := dst.CreateFolder(ctx, "semestre 3")
+	if _, err := dst.CreateFolderIn(ctx, "td", pre.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	pkg, err := share.Build(ctx, src, share.Selection{Scope: share.ScopeAll}, share.FormatNoteCore, "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := share.Import(ctx, dst, pkg.Data, "")
+	if err != nil || rep.Imported != 2 {
+		t.Fatalf("rapport = %+v, err = %v", rep, err)
+	}
+	folders, _ := dst.ListFolders(ctx)
+	if len(folders) != 4 || rep.FoldersCreated != 2 { // « Semestre 4 » et son « TD »
+		t.Errorf("dossiers = %d, créés = %d : %+v", len(folders), rep.FoldersCreated, folders)
+	}
+	byID := map[string]notes.Folder{}
+	for _, f := range folders {
+		byID[f.ID] = f
+	}
+	all, _ := dst.ListNotes(ctx)
+	paths := map[string]string{}
+	for _, n := range all {
+		f := byID[*n.FolderID]
+		paths[n.Title] = byID[*f.ParentID].Name + "/" + f.Name
+	}
+	if paths["Exercice 0"] != "semestre 3/td" || paths["Exercice 1"] != "Semestre 4/TD" {
+		t.Errorf("chemins = %v", paths)
+	}
+}

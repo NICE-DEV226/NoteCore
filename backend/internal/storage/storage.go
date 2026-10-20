@@ -188,6 +188,17 @@ CREATE TABLE IF NOT EXISTS review_log (
 CREATE INDEX IF NOT EXISTS idx_review_log_card ON review_log(card_id);
 CREATE INDEX IF NOT EXISTS idx_review_log_at ON review_log(reviewed_at);
 `},
+	{version: 4, sql: `
+-- Dossiers imbriqués (ADR-009). Supprimer un dossier ne détruit jamais ses
+-- sous-dossiers : l'application les remonte d'un niveau ; ON DELETE SET NULL
+-- n'est que le filet de sécurité de la base.
+ALTER TABLE folders ADD COLUMN parent_id TEXT REFERENCES folders(id) ON DELETE SET NULL;
+-- Le nom est désormais unique PARMI LES DOSSIERS DE MÊME PARENT : deux matières
+-- peuvent chacune avoir un dossier « TD ».
+DROP INDEX IF EXISTS idx_folders_name;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_parent_name ON folders(COALESCE(parent_id, ''), name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+`},
 }
 
 // SchemaVersion renvoie la version de schéma courante — information

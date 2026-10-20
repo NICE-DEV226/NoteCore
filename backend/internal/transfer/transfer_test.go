@@ -605,3 +605,78 @@ func TestRestoreBackupConserveLesCartes(t *testing.T) {
 		t.Errorf("historique restauré = %d (%v), attendu 1", logs, err)
 	}
 }
+
+// L'arborescence des dossiers survit à une sauvegarde restaurée, même quand un
+// enfant précède son parent dans la table (ADR-009).
+func TestRestoreBackupConserveLArborescence(t *testing.T) {
+	db, svc := makeDB(t)
+	ctx := context.Background()
+	a, _ := svc.CreateFolder(ctx, "Z-racine")
+	b, err := svc.CreateFolderIn(ctx, "Enfant", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := svc.CreateFolderIn(ctx, "Petit-enfant", b.ID)
+	n, _ := svc.CreateNote(ctx, "Note", c.ID)
+
+	dest := filepath.Join(t.TempDir(), "arbo.zip")
+	schemaVersion, _ := storage.SchemaVersion(db)
+	if err := CreateBackup(db, schemaVersion, dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{c.ID, b.ID, a.ID} {
+		if _, err := svc.DeleteFolder(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RestoreBackup(db, schemaVersion, dest); err != nil {
+		t.Fatalf("restauration : %v", err)
+	}
+	folders, _ := svc.ListFolders(ctx)
+	parents := map[string]string{}
+	for _, f := range folders {
+		if f.ParentID != nil {
+			parents[f.Name] = *f.ParentID
+		}
+	}
+	if len(folders) != 3 || parents["Enfant"] != a.ID || parents["Petit-enfant"] != b.ID {
+		t.Errorf("arborescence restaurée = %+v", folders)
+	}
+	if got, _ := svc.GetNote(ctx, n.ID); got.FolderID == nil || *got.FolderID != c.ID {
+		t.Error("la note doit retrouver son dossier")
+	}
+}
+
+func TestExportNommeLeCheminDesDossiers(t *testing.T) {
+	_, svc := makeDB(t)
+	ctx := context.Background()
+	a, _ := svc.CreateFolder(ctx, "Semestre 3")
+	b, _ := svc.CreateFolderIn(ctx, "Réseaux", a.ID)
+	n, _ := svc.CreateNote(ctx, "Cours", b.ID)
+	list, _ := svc.ListNotes(ctx)
+	folders, _ := svc.ListFolders(ctx)
+	_ = n
+	data, err := ExportAllArchive(list, folders, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, _ := f.Open()
+		var m Manifest
+		if err := json.NewDecoder(rc).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(m.Items[0].FolderPath, " > "); got != "Semestre 3 > Réseaux" {
+			t.Errorf("chemin = %q", got)
+		}
+		return
+	}
+	t.Fatal("manifest.json absent")
+}

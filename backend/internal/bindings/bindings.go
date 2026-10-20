@@ -156,8 +156,41 @@ func (n *NoteCore) ListFolders() ([]notes.Folder, error) {
 	return n.svc.ListFolders(n.callContext())
 }
 
-func (n *NoteCore) CreateFolder(name string) (notes.Folder, error) {
-	return n.svc.CreateFolder(n.callContext(), name)
+// CreateFolder crée un dossier dans parentID ("" = racine).
+func (n *NoteCore) CreateFolder(name, parentID string) (notes.Folder, error) {
+	return n.svc.CreateFolderIn(n.callContext(), name, parentID)
+}
+
+// MoveFolder déplace un dossier (avec tout ce qu'il contient) sous un autre
+// dossier ("" = racine). Refusé s'il se retrouverait dans l'un de ses descendants.
+func (n *NoteCore) MoveFolder(id, newParentID string) error {
+	if id == "" {
+		return fmt.Errorf("dossier à déplacer non identifié")
+	}
+	return n.svc.MoveFolder(n.callContext(), id, newParentID)
+}
+
+// MoveNotes range plusieurs notes dans un dossier ("" = sans dossier), tout ou rien.
+func (n *NoteCore) MoveNotes(noteIDs []string, folderID string) error {
+	return n.svc.MoveNotes(n.callContext(), noteIDs, folderID)
+}
+
+// SuggestFolders propose des dossiers pour une note, d'après ce qui est déjà
+// rangé (vocabulaire et étiquettes). Une estimation, jamais un rangement automatique.
+func (n *NoteCore) SuggestFolders(noteID string) ([]notes.Suggestion, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note non identifiée")
+	}
+	out, err := n.svc.SuggestFolders(n.callContext(), noteID, 3)
+	if out == nil {
+		out = []notes.Suggestion{}
+	}
+	return out, err
+}
+
+// Inbox liste les notes sans dossier avec leurs meilleures propositions.
+func (n *NoteCore) Inbox() ([]notes.InboxItem, error) {
+	return n.svc.Inbox(n.callContext())
 }
 
 func (n *NoteCore) RenameFolder(id, name string) error {

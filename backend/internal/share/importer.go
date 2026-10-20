@@ -44,10 +44,11 @@ type attData struct {
 }
 
 type draft struct {
-	title, content, folder string
-	tags                   []string
-	pinned                 bool
-	atts                   []attData
+	title, content string
+	folderPath     []string // de la racine au dossier ; vide = sans dossier
+	tags           []string
+	pinned         bool
+	atts           []attData
 }
 
 // Import lit un paquet NoteCore, une archive de fichiers Markdown (dont
@@ -158,7 +159,7 @@ func readShare(raw []byte, byName map[string]*zip.File, b *budget) ([]draft, err
 		if err != nil {
 			return nil, err
 		}
-		d := draft{title: strings.TrimSpace(it.Title), content: string(content), folder: strings.TrimSpace(it.Folder), tags: it.Tags, pinned: it.Pinned}
+		d := draft{title: strings.TrimSpace(it.Title), content: string(content), folderPath: pathOf(it.FolderPath, it.Folder), tags: it.Tags, pinned: it.Pinned}
 		for _, a := range it.Attachments {
 			af, ok := byName[a.File]
 			if !ok {
@@ -177,28 +178,44 @@ func readShare(raw []byte, byName map[string]*zip.File, b *budget) ([]draft, err
 	return out, nil
 }
 
+// pathOf choisit le chemin du dossier : le chemin complet s'il existe, sinon le
+// simple nom (paquets et exports antérieurs aux dossiers imbriqués).
+func pathOf(path []string, name string) []string {
+	var out []string
+	for _, p := range path {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 && strings.TrimSpace(name) != "" {
+		out = []string{strings.TrimSpace(name)}
+	}
+	return out
+}
+
 // folderIndex lit le manifeste d'un export NoteCore et renvoie « nom de
-// fichier .md → nom du dossier ».
-func folderIndex(raw []byte) map[string]string {
+// fichier .md → chemin du dossier ».
+func folderIndex(raw []byte) map[string][]string {
 	var m struct {
 		Items []struct {
-			File   string `json:"file"`
-			Folder string `json:"folder"`
+			File       string   `json:"file"`
+			Folder     string   `json:"folder"`
+			FolderPath []string `json:"folderPath"`
 		} `json:"items"`
 	}
 	if json.Unmarshal(raw, &m) != nil {
 		return nil
 	}
-	out := make(map[string]string, len(m.Items))
+	out := make(map[string][]string, len(m.Items))
 	for _, it := range m.Items {
-		if it.Folder != "" {
-			out[it.File] = it.Folder
+		if p := pathOf(it.FolderPath, it.Folder); len(p) > 0 {
+			out[it.File] = p
 		}
 	}
 	return out
 }
 
-func readMarkdownZip(zr *zip.Reader, b *budget, folders map[string]string) ([]draft, error) {
+func readMarkdownZip(zr *zip.Reader, b *budget, folders map[string][]string) ([]draft, error) {
 	var out []draft
 	for _, f := range zr.File {
 		name := strings.ReplaceAll(f.Name, "\\", "/")
@@ -217,8 +234,7 @@ func readMarkdownZip(zr *zip.Reader, b *budget, folders map[string]string) ([]dr
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		folder := folders[strings.TrimPrefix(name, "notes/")]
-		out = append(out, draft{title: title, content: content, tags: tags, folder: folder})
+		out = append(out, draft{title: title, content: content, tags: tags, folderPath: folders[strings.TrimPrefix(name, "notes/")]})
 	}
 	return out, nil
 }
@@ -259,9 +275,16 @@ func apply(ctx context.Context, svc *notes.Service, drafts []draft) (Report, err
 	if err != nil {
 		return rep, err
 	}
+	// « parent|nom » → identifiant : deux dossiers de même nom sous des parents
+	// différents ne se confondent pas.
 	folderID := make(map[string]string, len(folders))
+	folderKey := func(parent, name string) string { return parent + "|" + strings.ToLower(name) }
 	for _, f := range folders {
-		folderID[strings.ToLower(f.Name)] = f.ID
+		parent := ""
+		if f.ParentID != nil {
+			parent = *f.ParentID
+		}
+		folderID[folderKey(parent, f.Name)] = f.ID
 	}
 
 	for _, d := range drafts {
@@ -280,13 +303,13 @@ func apply(ctx context.Context, svc *notes.Service, drafts []draft) (Report, err
 		}
 
 		fid := ""
-		if d.folder != "" {
-			key := strings.ToLower(d.folder)
+		for _, name := range d.folderPath {
+			key := folderKey(fid, name)
 			id, ok := folderID[key]
 			if !ok {
-				f, err := svc.CreateFolder(ctx, d.folder)
+				f, err := svc.CreateFolderIn(ctx, name, fid)
 				if err != nil {
-					return rep, fmt.Errorf("dossier « %s » : %w", d.folder, err)
+					return rep, fmt.Errorf("dossier « %s » : %w", name, err)
 				}
 				id = f.ID
 				folderID[key] = id

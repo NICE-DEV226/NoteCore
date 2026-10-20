@@ -55,13 +55,42 @@ type ManifestItem struct {
 	// reste l'identifiant applicatif, stable d'un export à l'autre.
 	Folder   string `json:"folder,omitempty"`
 	FolderID string `json:"folderId,omitempty"`
-	Tags     string `json:"tags,omitempty"`
+	// FolderPath : chemin complet du dossier, de la racine à lui (dossiers
+	// imbriqués, ADR-009). Un tableau, pas un texte : un nom peut contenir « / ».
+	FolderPath []string `json:"folderPath,omitempty"`
+	Tags       string   `json:"tags,omitempty"`
 }
 
 // ManifestFolder décrit un dossier de l'espace de travail exporté.
 type ManifestFolder struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID       string  `json:"id"`
+	ParentID *string `json:"parentId,omitempty"`
+	Name     string  `json:"name"`
+}
+
+// FolderPath renvoie les noms de la racine jusqu'au dossier id (nil si inconnu).
+// Une boucle de données corrompues ne peut pas faire tourner la fonction à vide.
+func FolderPath(folders []notes.Folder, id string) []string {
+	byID := make(map[string]notes.Folder, len(folders))
+	for _, f := range folders {
+		byID[f.ID] = f
+	}
+	var rev []string
+	for cur, n := id, 0; cur != "" && n <= 64; n++ {
+		f, ok := byID[cur]
+		if !ok {
+			break
+		}
+		rev = append(rev, f.Name)
+		if f.ParentID == nil {
+			break
+		}
+		cur = *f.ParentID
+	}
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	return rev
 }
 
 // Manifest est le contenu de manifest.json — écrit en dernier
@@ -243,7 +272,7 @@ func ExportAllArchive(list []notes.Note, folders []notes.Folder, assetsByNote ma
 	folderNames := make(map[string]string, len(folders))
 	for _, f := range folders {
 		folderNames[f.ID] = f.Name
-		manifest.Folders = append(manifest.Folders, ManifestFolder{ID: f.ID, Name: f.Name})
+		manifest.Folders = append(manifest.Folders, ManifestFolder{ID: f.ID, ParentID: f.ParentID, Name: f.Name})
 	}
 
 	buf := &bytes.Buffer{}
@@ -283,12 +312,13 @@ func ExportAllArchive(list []notes.Note, folders []notes.Folder, assetsByNote ma
 			folderID = *n.FolderID
 		}
 		manifest.Items = append(manifest.Items, ManifestItem{
-			ID:       n.ID,
-			Title:    n.Title,
-			File:     name + ".md",
-			Folder:   folderNames[folderID],
-			FolderID: folderID,
-			Tags:     strings.Join(n.Tags, ", "),
+			ID:         n.ID,
+			Title:      n.Title,
+			File:       name + ".md",
+			Folder:     folderNames[folderID],
+			FolderID:   folderID,
+			FolderPath: FolderPath(folders, folderID),
+			Tags:       strings.Join(n.Tags, ", "),
 		})
 	}
 

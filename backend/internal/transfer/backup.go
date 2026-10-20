@@ -128,6 +128,15 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
+	// Dossiers imbriqués (schéma 4, ADR-009) : une sauvegarde plus ancienne n'a
+	// pas la colonne parent_id, tous ses dossiers sont à la racine.
+	var parentCols int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('folders', 'restore_source') WHERE name = 'parent_id'`,
+	).Scan(&parentCols); err != nil {
+		return fmt.Errorf("inspection du schéma sauvegardé : %w", err)
+	}
+	hasParent := parentCols > 0
 	// Même règle pour les cartes de révision (schéma 3, ADR-007).
 	hasCards, err := attachedTableExists(db, "restore_source", "cards")
 	if err != nil {
@@ -173,6 +182,14 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 		statements = append(statements,
 			`INSERT INTO attachments(id, note_id, filename, mime, size, data, created_at)
 				SELECT id, note_id, filename, mime, size, data, created_at FROM restore_source.attachments`,
+		)
+	}
+	if hasParent {
+		// Les parents sont rattachés APRÈS l'insertion de tous les dossiers : un
+		// enfant peut précéder son parent dans la table, et la clé étrangère
+		// refuserait de l'insérer avant.
+		statements = append(statements,
+			`UPDATE folders SET parent_id = (SELECT s.parent_id FROM restore_source.folders s WHERE s.id = folders.id)`,
 		)
 	}
 	if hasCards {

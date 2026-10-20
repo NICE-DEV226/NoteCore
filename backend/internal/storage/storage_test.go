@@ -91,6 +91,17 @@ func TestMigrationConserveLaBasePrecedente(t *testing.T) {
 		t.Fatalf("insertion : %v", err)
 	}
 	// Recule la base à l'état d'une installation antérieure.
+	// Schéma 4 : on retire aussi les dossiers imbriqués (colonne et index).
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_folders_parent_name`,
+		`DROP INDEX IF EXISTS idx_folders_parent`,
+		`ALTER TABLE folders DROP COLUMN parent_id`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_name ON folders(name COLLATE NOCASE)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("retour arrière : %v", err)
+		}
+	}
 	for _, table := range []string{"review_log", "cards", "attachments"} {
 		if _, err := db.Exec(`DROP TABLE IF EXISTS ` + table); err != nil {
 			t.Fatalf("retour arrière : %v", err)
