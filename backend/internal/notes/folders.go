@@ -74,12 +74,25 @@ func depthOf(parents map[string]string, id string) int {
 }
 
 // subtreeHeight : hauteur du sous-arbre de id (un dossier sans enfant : 1).
+// Bornée : des données corrompues (une boucle, venue d'une sauvegarde piégée)
+// ne peuvent pas la faire descendre sans fin ; au-delà de la profondeur
+// maximale elle renvoie une valeur qui fait refuser l'opération.
 func subtreeHeight(parents map[string]string, id string) int {
-	best := 1
+	return subtreeHeightAt(parents, id, 1)
+}
+
+func subtreeHeightAt(parents map[string]string, id string, depth int) int {
+	if depth > MaxFolderDepth {
+		return MaxFolderDepth + 1
+	}
+	best := depth
 	for child, parent := range parents {
 		if parent == id {
-			if h := 1 + subtreeHeight(parents, child); h > best {
+			if h := subtreeHeightAt(parents, child, depth+1); h > best {
 				best = h
+			}
+			if best > MaxFolderDepth {
+				return MaxFolderDepth + 1
 			}
 		}
 	}

@@ -18,19 +18,20 @@ Les dossiers étaient plats : impossible de refléter *Semestre 3 → Réseaux �
 4. **Voir un dossier montre aussi ses sous-dossiers** (« Réseaux » affiche les notes de « Réseaux › TD »). Le compteur est celui du sous-arbre.
 5. **Ranger n'est pas modifier** : déplacer une note dans un dossier ne change pas sa date de modification (comme l'épinglage).
 6. **Déplacement groupé tout-ou-rien** (`MoveNotes`, une transaction) : une note inconnue annule tout le lot.
-7. **Sauvegarde, export, partage** : la restauration rattache les parents après l'insertion de tous les dossiers (un enfant peut précéder son parent dans la table) ; l'export et le paquet `.notecore` portent le **chemin complet** (`folderPath`, un tableau : un nom peut contenir « / »), et l'import retrouve ou crée la chaîne de dossiers *par parent* — « Semestre 3 / TD » reçu est fusionné avec l'existant, jamais dupliqué.
+7. **Données corrompues ou piégées** : les parcours de l'arborescence sont bornés (profondeur) et ne peuvent pas tourner à vide ; une sauvegarde dont les dossiers forment une boucle, ou sont trop profonds, est **refusée en bloc** à la restauration (la base courante reste intacte) plutôt que « réparée » en silence.
+8. **Sauvegarde, export, partage** : la restauration rattache les parents après l'insertion de tous les dossiers (un enfant peut précéder son parent dans la table) ; l'export et le paquet `.notecore` portent le **chemin complet** (`folderPath`, un tableau : un nom peut contenir « / »), et l'import retrouve ou crée la chaîne de dossiers *par parent* — « Semestre 3 / TD » reçu est fusionné avec l'existant, jamais dupliqué.
 
 ### Interface
 
-8. Arborescence repliable (état mémorisé localement), **glisser-déposer** de notes (une ou toute la sélection) et de dossiers, dépliage automatique d'un dossier survolé, zone « racine » visible pendant le glissement. **Sélection multiple** (Ctrl/Maj+clic).
-9. **Alternative sans souris** : sélecteur de destination (« Ranger dans… », « Déplacer ce dossier… ») au clavier et au lecteur d'écran ; les destinations interdites y sont grisées avec la raison.
+9. Arborescence repliable (état mémorisé localement), **glisser-déposer** de notes (une ou toute la sélection) et de dossiers, dépliage automatique d'un dossier survolé, zone « racine » visible pendant le glissement. **Sélection multiple** (Ctrl/Maj+clic).
+10. **Alternative sans souris** : sélecteur de destination (« Ranger dans… », « Déplacer ce dossier… ») au clavier et au lecteur d'écran ; les destinations interdites y sont grisées avec la raison.
 
 ### Rangement intelligent (sans IA générative)
 
-10. **Boîte « À classer »** : les notes sans dossier, avec pour chacune la meilleure proposition. Un clic range ; « Ranger les N sûres » range d'un coup celles dont la proposition est de confiance haute ; les autres restent à décider une à une. La proposition apparaît aussi dans l'éditeur d'une note sans dossier (acceptable ou ignorable).
-11. **Méthode** : comparaison du vocabulaire de la note à celui des notes déjà rangées — TF-IDF (titre ×3, étiquettes ×4, début du texte), similarité cosinus avec le centre de chaque dossier (les sous-dossiers comptent à 40 %) — combinée à l'**affinité des étiquettes** (part des notes portant l'étiquette qui sont dans ce dossier, pondérée par le nombre d'exemples). Mots vides français et anglais retirés, accents ignorés. Tout est calculé localement, sur la base : aucun modèle, aucun réseau.
-12. **Honnêteté** : une note trop courte ne reçoit rien ; une note hors sujet ne reçoit pas de proposition « fiable » ; une note déjà rangée est comparée **sans sa propre contribution** (elle ne se confirme pas elle-même) ; à égalité, le dossier le plus précis passe avant son parent. Chaque proposition **dit pourquoi** (étiquettes et mots en commun). Les niveaux de confiance sont « très probable » (score ≥ 0,45 et marge ≥ 0,08 sur la deuxième), « probable » (≥ 0,25) et « possible ».
-13. **Jamais de rangement automatique non demandé** : l'application propose, l'utilisateur décide.
+11. **Boîte « À classer »** : les notes sans dossier, avec pour chacune la meilleure proposition. Un clic range ; « Ranger les N sûres » range d'un coup celles dont la proposition est de confiance haute ; les autres restent à décider une à une. La proposition apparaît aussi dans l'éditeur d'une note sans dossier (acceptable ou ignorable).
+12. **Méthode** : comparaison du vocabulaire de la note à celui des notes déjà rangées — TF-IDF (titre ×3, étiquettes ×4, début du texte), similarité cosinus avec le centre de chaque dossier (les sous-dossiers comptent à 40 %) — combinée à l'**affinité des étiquettes** (part des notes portant l'étiquette qui sont dans ce dossier, pondérée par le nombre d'exemples). Mots vides français et anglais retirés, accents ignorés. Tout est calculé localement, sur la base : aucun modèle, aucun réseau.
+13. **Honnêteté** : une note trop courte ne reçoit rien ; une note hors sujet ne reçoit pas de proposition « fiable » ; une note déjà rangée est comparée **sans sa propre contribution** (elle ne se confirme pas elle-même) ; à égalité, le dossier le plus précis passe avant son parent. Chaque proposition **dit pourquoi** (étiquettes et mots en commun). Les niveaux de confiance sont « très probable » (score ≥ 0,45 et marge ≥ 0,08 sur la deuxième), « probable » (≥ 0,25) et « possible ».
+14. **Jamais de rangement automatique non demandé** : l'application propose, l'utilisateur décide.
 
 ## Options considérées
 

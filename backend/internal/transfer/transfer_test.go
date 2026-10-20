@@ -680,3 +680,32 @@ func TestExportNommeLeCheminDesDossiers(t *testing.T) {
 	}
 	t.Fatal("manifest.json absent")
 }
+
+// Une sauvegarde dont les dossiers forment une boucle est refusée en bloc :
+// rien n'est restauré, la base courante reste intacte.
+func TestRestoreBackupRefuseUneArborescenceCorrompue(t *testing.T) {
+	db, svc := makeDB(t)
+	ctx := context.Background()
+	a, _ := svc.CreateFolder(ctx, "A")
+	b, _ := svc.CreateFolderIn(ctx, "B", a.ID)
+	svc.CreateNote(ctx, "témoin", "")
+	// Boucle et dossier parent de lui-même, écrits sans passer par l'application.
+	if _, err := db.Exec(`UPDATE folders SET parent_id = ? WHERE id = ?`, b.ID, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "piegee.zip")
+	schemaVersion, _ := storage.SchemaVersion(db)
+	if err := CreateBackup(db, schemaVersion, dest); err != nil {
+		t.Fatal(err)
+	}
+
+	// On restaure dans une base saine contenant une note à préserver.
+	db2, svc2 := makeDB(t)
+	keep, _ := svc2.CreateNote(ctx, "à préserver", "")
+	if err := RestoreBackup(db2, schemaVersion, dest); err == nil || !strings.Contains(err.Error(), "arborescence") {
+		t.Fatalf("la sauvegarde piégée doit être refusée : %v", err)
+	}
+	if got, err := svc2.GetNote(ctx, keep.ID); err != nil || got.Title != "à préserver" {
+		t.Errorf("la base courante doit rester intacte : %v", err)
+	}
+}

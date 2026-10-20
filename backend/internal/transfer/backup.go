@@ -219,6 +219,15 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 			return rollback(fmt.Errorf("restauration : %w", err))
 		}
 	}
+	// Une sauvegarde piégée ou corrompue ne doit pas introduire une arborescence
+	// de dossiers invalide (boucle, dossier parent de lui-même, profondeur
+	// absurde) : le reste de l'application la parcourt. On refuse toute la
+	// restauration plutôt que de « réparer » en silence.
+	if hasParent {
+		if err := checkFolderTree(tx); err != nil {
+			return rollback(err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("validation finale de la restauration : %w", err)
 	}
@@ -596,4 +605,31 @@ func checksumZipEntry(entry *zip.File, limit int64) (string, int64, error) {
 		return "", 0, fmt.Errorf("base sauvegardée trop volumineuse (%d octets)", n)
 	}
 	return hex.EncodeToString(h.Sum(nil)), n, nil
+}
+
+// maxRestoredDepth : même borne que l'application (notes.MaxFolderDepth), avec
+// une marge pour qu'un contrôle ne soit jamais plus strict que l'écriture.
+const maxRestoredDepth = 12
+
+// checkFolderTree vérifie que les dossiers restaurés forment une forêt : aucun
+// dossier n'est son propre ancêtre, aucun n'est trop profond.
+func checkFolderTree(tx *sql.Tx) error {
+	var bad int
+	err := tx.QueryRow(`
+		WITH RECURSIVE chain(start, cur, depth) AS (
+			SELECT id, parent_id, 1 FROM folders WHERE parent_id IS NOT NULL
+			UNION ALL
+			SELECT chain.start, f.parent_id, chain.depth + 1
+			  FROM chain JOIN folders f ON f.id = chain.cur
+			 WHERE f.parent_id IS NOT NULL AND chain.depth <= ?
+		)
+		SELECT COUNT(*) FROM chain WHERE cur = start OR depth > ?`,
+		maxRestoredDepth, maxRestoredDepth).Scan(&bad)
+	if err != nil {
+		return fmt.Errorf("contrôle des dossiers restaurés : %w", err)
+	}
+	if bad > 0 {
+		return fmt.Errorf("sauvegarde refusée : l'arborescence des dossiers est invalide (boucle ou profondeur excessive)")
+	}
+	return nil
 }

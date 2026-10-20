@@ -2,10 +2,13 @@ package notes_test
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"notecore/backend/internal/notes"
+	"notecore/backend/internal/storage"
 )
 
 func mkFolder(t *testing.T, svc *notes.Service, name, parent string) notes.Folder {
@@ -186,4 +189,50 @@ func TestRangerNeModifiePasLaDate(t *testing.T) {
 	if after.UpdatedAt != before.UpdatedAt {
 		t.Errorf("ranger ne doit pas changer la date de modification : %s → %s", before.UpdatedAt, after.UpdatedAt)
 	}
+}
+
+// Des données corrompues (une boucle d'ancêtres) ne font ni planter ni tourner
+// à vide : l'opération est refusée.
+func TestArborescenceCorrompueNePlantePas(t *testing.T) {
+	dir := t.TempDir()
+	db, err := storage.Open(filepath.Join(dir, "c.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := notes.New(db)
+	ctx := context.Background()
+	a := mkFolder(t, svc, "A", "")
+	b := mkFolder(t, svc, "B", a.ID)
+	c := mkFolder(t, svc, "C", "")
+	// Boucle A → B → A, écrite directement (l'application, elle, l'interdit).
+	if _, err := db.Exec(`UPDATE folders SET parent_id = ? WHERE id = ?`, b.ID, a.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- svc.MoveFolder(ctx, a.ID, c.ID) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("déplacer un dossier pris dans une boucle doit être refusé")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("MoveFolder tourne à vide sur une boucle")
+	}
+	if _, err := svc.SuggestFolders(ctx, mustNote(t, svc, c.ID).ID, 3); err != nil {
+		t.Errorf("les propositions doivent survivre à une boucle : %v", err)
+	}
+	if _, err := svc.Inbox(ctx); err != nil {
+		t.Errorf("la boîte à classer doit survivre à une boucle : %v", err)
+	}
+}
+
+func mustNote(t *testing.T, svc *notes.Service, folderID string) notes.Note {
+	t.Helper()
+	n, err := svc.CreateNote(context.Background(), "x", folderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
