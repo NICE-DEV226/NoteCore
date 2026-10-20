@@ -35,6 +35,8 @@ export interface SearchHit {
 
 export interface Folder {
   id: string;
+  /** Dossier parent (null = racine). Dossiers imbriqués, ADR-009. */
+  parentId?: string | null;
   name: string;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +93,7 @@ export type View =
   | { kind: 'all' }
   | { kind: 'favorites' }
   | { kind: 'recent' }
+  | { kind: 'inbox' }
   | { kind: 'folder'; folderId: string }
   | { kind: 'tag'; tag: string };
 
@@ -233,4 +236,26 @@ export interface ImportResult {
   wrongPassphrase: boolean;
   pendingId: string;
   report: ImportReport;
+}
+
+// --- rangement intelligent (ADR-009) ----------------------------------------
+
+export type SuggestionConfidence = 'high' | 'medium' | 'low';
+
+/** Dossier proposé pour une note, avec ce qui motive la proposition. */
+export interface FolderSuggestion {
+  folderId: string;
+  /** Noms de la racine jusqu'au dossier. */
+  path: string[];
+  score: number;
+  confidence: SuggestionConfidence;
+  /** Étiquettes partagées avec le dossier. */
+  tags: string[];
+  /** Mots qui motivent la proposition. */
+  terms: string[];
+}
+
+export interface InboxItem {
+  noteId: string;
+  suggestions: FolderSuggestion[];
 }

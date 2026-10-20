@@ -9,8 +9,11 @@ import { derived, get, writable } from 'svelte/store';
 import { api } from '../api/client';
 import { refreshReview, scheduleReviewRefresh } from './review';
 import { filesOpen } from './files';
+import { ancestorIds, buildTree, subtreeIds } from '../utils/folders';
 import type {
   Folder,
+  FolderSuggestion,
+  InboxItem,
   Note,
   NotePatch,
   RestorePreview,
@@ -117,8 +120,8 @@ export function scheduleSearch(delayMs = 200): void {
 
 /** Liste des notes de la vue courante, filtrée par la recherche backend. */
 export const filteredNotes = derived(
-  [notes, currentView, searchQuery, remoteSearchHits],
-  ([$notes, $view, $query, $hits]) => {
+  [notes, currentView, searchQuery, remoteSearchHits, folders],
+  ([$notes, $view, $query, $hits, $folders]) => {
     let list = $notes;
 
     switch ($view.kind) {
@@ -133,8 +136,14 @@ export const filteredNotes = derived(
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, 10);
         break;
-      case 'folder':
-        list = list.filter((n) => n.folderId === $view.folderId);
+      case 'folder': {
+        // Un dossier montre ses notes ET celles de ses sous-dossiers.
+        const ids = subtreeIds($folders, $view.folderId);
+        list = list.filter((n) => n.folderId !== null && ids.has(n.folderId));
+        break;
+      }
+      case 'inbox':
+        list = list.filter((n) => !n.folderId);
         break;
       case 'tag':
         list = list.filter((n) => (n.tags ?? []).includes($view.tag));
@@ -170,6 +179,19 @@ export const filteredNotes = derived(
     });
   }
 );
+
+/** Arbre des dossiers, avec le nombre de notes de chacun (sous-dossiers compris). */
+export const folderTree = derived([folders, notes], ([$folders, $notes]) => buildTree($folders, $notes));
+
+/** Notes sans dossier : la boîte « À classer ». */
+export const inboxCount = derived(notes, ($notes) => $notes.filter((n) => !n.folderId).length);
+
+/** Notes cochées dans la liste (Ctrl/Maj+clic) pour un rangement groupé. */
+export const selectedIds = writable<Set<string>>(new Set());
+
+export function clearSelection(): void {
+  selectedIds.set(new Set());
+}
 
 /** Y a-t-il au moins une note dans l'application ? (état vide du CDC §4.3) */
 export const hasAnyNote = derived(notes, ($notes) => $notes.length > 0);
@@ -252,6 +274,7 @@ async function writePending(): Promise<void> {
     if (get(searchQuery).trim()) scheduleSearch(50);
     // Les cartes de révision suivent le texte de la note (ADR-007).
     scheduleReviewRefresh();
+    scheduleInboxRefresh(2500);
   } catch {
     saveState.set('error');
     // Le patch est conservé pour que « Réessayer » rejoue réellement
@@ -284,6 +307,7 @@ export async function initWorkspace(): Promise<void> {
   folders.set(loadedFolders ?? []);
   loaded.set(true);
   void refreshReview();
+  void refreshInbox();
 
   if (safetyCopy) {
     notifyTransfer(
@@ -308,6 +332,7 @@ export async function reloadData(): Promise<void> {
   notes.set(loadedNotes ?? []);
   folders.set(loadedFolders ?? []);
   void refreshReview();
+  void refreshInbox();
 }
 
 /** Retourne à l'accueil : aucune note ouverte, modifications d'abord écrites. */
@@ -411,12 +436,12 @@ function folderErrorText(err: unknown): string {
   return err instanceof Error ? err.message : "L'opération a échoué.";
 }
 
-export async function createFolder(name: string): Promise<boolean> {
+export async function createFolder(name: string, parentId: string | null = null): Promise<boolean> {
   const trimmed = name.trim();
   if (!trimmed) return false;
   folderError.set(null);
   try {
-    const folder = await api.createFolder(trimmed);
+    const folder = await api.createFolder(trimmed, parentId);
     folders.update((list) => [...list, folder]);
     return true;
   } catch (err) {
@@ -434,7 +459,8 @@ export async function renameFolder(id: string, name: string): Promise<boolean> {
   folderError.set(null);
   try {
     const folder = await api.renameFolder(id, trimmed);
-    folders.update((list) => list.map((f) => (f.id === id ? folder : f)));
+    // Le renommage ne dit rien du parent : on le conserve.
+    folders.update((list) => list.map((f) => (f.id === id ? { ...f, name: folder.name } : f)));
     return true;
   } catch (err) {
     folderError.set(folderErrorText(err));
@@ -442,24 +468,151 @@ export async function renameFolder(id: string, name: string): Promise<boolean> {
   }
 }
 
-/** Supprime un dossier sans toucher aux notes (cahier des charges §3.2). */
+/** Supprime un dossier sans rien perdre : notes et sous-dossiers montent d'un niveau. */
 export async function deleteFolder(id: string): Promise<boolean> {
   folderError.set(null);
   try {
+    const parent = get(folders).find((f) => f.id === id)?.parentId ?? null;
     const moved = await api.deleteFolder(id);
-    folders.update((list) => list.filter((f) => f.id !== id));
-    const movedIds = new Set(moved.map((n) => n.id));
-    notes.update((list) =>
-      list.map((n) => (movedIds.has(n.id) ? { ...n, folderId: null } : n))
+    folders.update((list) =>
+      list.filter((f) => f.id !== id).map((f) => (f.parentId === id ? { ...f, parentId: parent } : f))
     );
-    // Si la vue courante est le dossier supprimé, repasser sur « toutes ».
+    const where = new Map(moved.map((n) => [n.id, n.folderId ?? null]));
+    notes.update((list) => list.map((n) => (where.has(n.id) ? { ...n, folderId: where.get(n.id) ?? null } : n)));
+    // Si la vue courante est le dossier supprimé, on remonte chez son parent.
     const view = get(currentView);
-    if (view.kind === 'folder' && view.folderId === id) currentView.set({ kind: 'all' });
+    if (view.kind === 'folder' && view.folderId === id) {
+      currentView.set(parent ? { kind: 'folder', folderId: parent } : { kind: 'all' });
+    }
     return true;
   } catch (err) {
     folderError.set(folderErrorText(err));
     return false;
   }
+}
+
+/** Déplace un dossier (et tout son contenu) sous un autre ; null = racine. */
+export async function moveFolder(id: string, parentId: string | null): Promise<boolean> {
+  folderError.set(null);
+  try {
+    await api.moveFolder(id, parentId);
+    folders.update((list) => list.map((f) => (f.id === id ? { ...f, parentId } : f)));
+    if (parentId) expandFolder(parentId);
+    return true;
+  } catch (err) {
+    folderError.set(folderErrorText(err));
+    return false;
+  }
+}
+
+/** Range des notes dans un dossier (null = sans dossier), tout ou rien. */
+export async function moveNotesTo(noteIds: string[], folderId: string | null): Promise<boolean> {
+  if (noteIds.length === 0) return false;
+  await flushSave();
+  folderError.set(null);
+  try {
+    await api.moveNotes(noteIds, folderId);
+    const ids = new Set(noteIds);
+    notes.update((list) => list.map((n) => (ids.has(n.id) ? { ...n, folderId } : n)));
+    clearSelection();
+    if (folderId) expandFolder(folderId);
+    void refreshInbox();
+    return true;
+  } catch (err) {
+    folderError.set(folderErrorText(err));
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Arborescence dépliée (mémorisée localement : c'est de la présentation)
+// ---------------------------------------------------------------------------
+
+const EXPANDED_KEY = 'notecore.expandedFolders';
+
+function readExpanded(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    /* stockage indisponible : tout replié */
+  }
+  return new Set();
+}
+
+export const expandedFolders = writable<Set<string>>(readExpanded());
+expandedFolders.subscribe((set) => {
+  try {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...set]));
+  } catch {
+    /* sans conséquence */
+  }
+});
+
+export function toggleFolder(id: string): void {
+  expandedFolders.update((set) => {
+    const next = new Set(set);
+    if (!next.delete(id)) next.add(id);
+    return next;
+  });
+}
+
+/** Déplie un dossier et tous ses ancêtres (après un rangement, une création…). */
+export function expandFolder(id: string): void {
+  expandedFolders.update((set) => {
+    const next = new Set(set);
+    next.add(id);
+    for (const a of ancestorIds(get(folders), id)) next.add(a);
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rangement intelligent : propositions de dossier (ADR-009)
+// ---------------------------------------------------------------------------
+
+/** Propositions pour les notes sans dossier, par identifiant de note. */
+export const inboxSuggestions = writable<Map<string, FolderSuggestion[]>>(new Map());
+
+let inboxTimer: ReturnType<typeof setTimeout> | null = null;
+
+export async function refreshInbox(): Promise<void> {
+  try {
+    const items: InboxItem[] = await api.inbox();
+    inboxSuggestions.set(new Map(items.map((i) => [i.noteId, i.suggestions])));
+  } catch (err) {
+    console.warn('Propositions de rangement indisponibles :', err);
+  }
+}
+
+/** Recalcule les propositions sans bruit (après une saisie, un rangement…). */
+export function scheduleInboxRefresh(delayMs = 1200): void {
+  if (inboxTimer !== null) clearTimeout(inboxTimer);
+  inboxTimer = setTimeout(() => {
+    inboxTimer = null;
+    void refreshInbox();
+  }, delayMs);
+}
+
+/** Accepte une proposition : range la note dans le dossier proposé. */
+export const acceptSuggestion = (noteId: string, folderId: string): Promise<boolean> =>
+  moveNotesTo([noteId], folderId);
+
+/**
+ * Range d'un coup toutes les notes dont la proposition est « fiable ». Renvoie le
+ * nombre de notes rangées ; les autres restent dans la boîte, à décider une à une.
+ */
+export async function acceptAllConfident(): Promise<number> {
+  const byFolder = new Map<string, string[]>();
+  for (const [noteId, list] of get(inboxSuggestions)) {
+    const top = list[0];
+    if (top && top.confidence === 'high') (byFolder.get(top.folderId) ?? byFolder.set(top.folderId, []).get(top.folderId)!).push(noteId);
+  }
+  let moved = 0;
+  for (const [folderId, ids] of byFolder) {
+    if (await moveNotesTo(ids, folderId)) moved += ids.length;
+  }
+  return moved;
 }
 
 /** Rejoue l'écriture en attente après un échec (CDC §3.5). */

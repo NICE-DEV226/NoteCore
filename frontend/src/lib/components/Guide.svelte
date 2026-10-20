@@ -163,6 +163,7 @@ Cliquez sur « Réviser » dans la barre latérale pour essayer ces trois cartes
             <ul class="points">
               <li><Icon name="search" size={16} /><span><kbd>{mod}</kbd> <kbd>K</kbd> cherche dans le titre, le contenu et les étiquettes, et lance des actions.</span></li>
               <li><Icon name="plus" size={16} /><span><kbd>{mod}</kbd> <kbd>N</kbd> crée une note ; <kbd>{mod}</kbd> <kbd>,</kbd> ouvre les paramètres.</span></li>
+              <li><Icon name="inbox" size={16} /><span>Les notes sans dossier arrivent dans <strong>À classer</strong>, avec un dossier proposé : un clic pour ranger. Glissez aussi vos notes dans les dossiers.</span></li>
               <li><Icon name="sliders" size={16} /><span>Dans les paramètres : 22 polices, couleurs, tailles, thème clair ou sombre.</span></li>
             </ul>
           {:else if step === 3}

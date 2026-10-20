@@ -45,3 +45,16 @@ export const shareDialog = writable<{ scope: 'note' | 'folder' | 'all'; id: stri
 
 /** Boîte d'import : depuis un fichier ou un autre appareil du réseau local. */
 export const importOpen = writable(false);
+
+/** Ce qui est en train d'être glissé (notes ou dossier), lisible pendant le survol. */
+export const dragging = writable<{ kind: 'notes' | 'folder'; ids: string[] } | null>(null);
+
+/** Sélecteur de dossier (déplacer des notes ou un dossier). */
+export const folderPicker = writable<{
+  title: string;
+  /** Dossiers interdits comme destination (un dossier et son sous-arbre). */
+  exclude: string[];
+  current: string | null;
+  rootLabel: string;
+  onpick: (folderId: string | null) => void;
+} | null>(null);

@@ -1,5 +1,5 @@
 import type { NoteCoreApi } from './contract';
-import type { Folder, MasteryRow, Note, NotePatch, ReviewCard, SearchHit } from './types';
+import type { Folder, FolderSuggestion, InboxItem, MasteryRow, Note, NotePatch, ReviewCard, SearchHit } from './types';
 
 /**
  * Implémentation en mémoire du contrat NoteCoreApi.
@@ -351,6 +351,51 @@ const eod = () => new Date(new Date().setHours(24, 0, 0, 0)).getTime();
   });
 }
 
+/** Suggestion naïve du mock : mots et étiquettes en commun (le vrai calcul est dans le backend Go). */
+function mockSuggest(noteId: string, limit: number): FolderSuggestion[] {
+  const note = seed.notes.find((n) => n.id === noteId);
+  if (!note) return [];
+  const words = (t: string) => new Set(t.toLowerCase().match(/[a-zàâçéèêëîïôûùü]{4,}/g) ?? []);
+  const mine = words(`${note.title} ${note.content}`);
+  const out: FolderSuggestion[] = [];
+  for (const f of seed.folders) {
+    const others = seed.notes.filter((n) => n.folderId === f.id && n.id !== noteId);
+    if (!others.length) continue;
+    const pool = new Set<string>();
+    for (const o of others) for (const w of words(`${o.title} ${o.content}`)) pool.add(w);
+    const shared = [...mine].filter((w) => pool.has(w));
+    const tags = note.tags.filter((t) => others.some((o) => o.tags.includes(t)));
+    const score = Math.min(0.95, shared.length / Math.max(8, mine.size) * 1.6 + tags.length * 0.25);
+    if (score < 0.1) continue;
+    const path: string[] = [];
+    for (let cur: Folder | undefined = f; cur; cur = seed.folders.find((x) => x.id === cur?.parentId)) path.unshift(cur.name);
+    out.push({
+      folderId: f.id, path, score: Math.round(score * 1000) / 1000, tags: tags.slice(0, 3), terms: shared.slice(0, 3),
+      confidence: score >= 0.45 ? 'high' : score >= 0.25 ? 'medium' : 'low'
+    });
+  }
+  return out.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// Un peu d'arborescence et quelques notes à classer, pour montrer la boîte « À classer ».
+{
+  const cours = seed.folders.find((f) => f.name === 'Cours');
+  const reseaux = seed.notes.find((n) => n.title.includes('Réseaux'));
+  const os = seed.notes.find((n) => n.title.includes('exploitation'));
+  if (cours) {
+    const td = { ...makeFolder('TD', 60 * 24 * 5), parentId: cours.id };
+    const tp = { ...makeFolder('TP', 60 * 24 * 5), parentId: cours.id };
+    seed.folders.push(td, tp);
+    if (os) os.folderId = td.id;
+  }
+  if (reseaux) reseaux.folderId = cours?.id ?? reseaux.folderId;
+  seed.notes.push(
+    makeNote('Pare-feu et NAT', "Le NAT traduit les adresses IP privées en adresse publique, le pare-feu filtre les paquets selon le protocole et les ports TCP et UDP. Routage et passerelle.", null, ['réseaux'], 25),
+    makeNote('Ordonnanceur Linux', "L'ordonnanceur du noyau choisit le prochain processus : priorité, quantum, tourniquet, changement de contexte et files d'attente.", null, [], 55),
+    makeNote('Idées de projet', 'Faire une appli de notes hors ligne avec révision espacée.', null, [], 130)
+  );
+}
+
 export const mockApi: NoteCoreApi = {
   async listNotes() {
     await delay();
@@ -394,11 +439,47 @@ export const mockApi: NoteCoreApi = {
     }
   },
 
-  async createFolder(name) {
+  async createFolder(name, parentId) {
     await delay();
-    const folder = makeFolder(name.trim(), 0);
+    const clean = name.trim();
+    const parent = parentId ?? null;
+    if (seed.folders.some((f) => (f.parentId ?? null) === parent && f.name.toLowerCase() === clean.toLowerCase())) {
+      throw new Error(`un dossier « ${clean} » existe déjà à cet endroit (majuscules/minuscules confondues)`);
+    }
+    const folder = { ...makeFolder(clean, 0), parentId: parent };
     seed.folders.push(folder);
     return { ...folder };
+  },
+
+  async moveFolder(id, parentId) {
+    await delay();
+    const f = seed.folders.find((x) => x.id === id);
+    if (!f) throw new Error('dossier introuvable');
+    for (let cur: string | null | undefined = parentId; cur; cur = seed.folders.find((x) => x.id === cur)?.parentId) {
+      if (cur === id) throw new Error("un dossier ne peut pas être déplacé dans lui-même ni dans l'un de ses sous-dossiers");
+    }
+    f.parentId = parentId;
+  },
+
+  async moveNotes(noteIds, folderId) {
+    await delay();
+    for (const id of noteIds) {
+      const n = seed.notes.find((x) => x.id === id);
+      if (n) n.folderId = folderId;
+    }
+  },
+
+  async suggestFolders(noteId) {
+    await delay(60);
+    return mockSuggest(noteId, 3);
+  },
+
+  async inbox() {
+    await delay(60);
+    const items: InboxItem[] = seed.notes
+      .filter((n) => !n.folderId)
+      .map((n) => ({ noteId: n.id, suggestions: mockSuggest(n.id, 2) }));
+    return items.sort((a, b) => (b.suggestions[0]?.score ?? -1) - (a.suggestions[0]?.score ?? -1));
   },
 
   async renameFolder(id, name) {
@@ -413,11 +494,12 @@ export const mockApi: NoteCoreApi = {
     await delay();
     const idx = seed.folders.findIndex((f) => f.id === id);
     if (idx === -1) throw new Error('dossier introuvable');
+    const parent = seed.folders[idx].parentId ?? null;
     seed.folders.splice(idx, 1);
-    // Règle du cahier des charges (§3.2) : aucune note n'est perdue,
-    // les notes du dossier repassent à la racine.
+    // Rien n'est perdu : notes et sous-dossiers montent d'un niveau.
+    for (const f of seed.folders) if (f.parentId === id) f.parentId = parent;
     const affected = seed.notes.filter((n) => n.folderId === id);
-    for (const n of affected) n.folderId = null;
+    for (const n of affected) n.folderId = parent;
     return affected.map((n) => ({ ...n }));
   },
 

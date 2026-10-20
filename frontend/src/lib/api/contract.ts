@@ -1,4 +1,6 @@
 import type {
+  FolderSuggestion,
+  InboxItem,
   ArchiveListing,
   AttachmentRef,
   ImportResult,
@@ -37,7 +39,16 @@ export interface NoteCoreApi {
   updateNote(id: string, patch: NotePatch): Promise<Note>;
   deleteNote(id: string): Promise<void>;
 
-  createFolder(name: string): Promise<Folder>;
+  /** Crée un dossier, à la racine ou dans `parentId` (dossiers imbriqués, ADR-009). */
+  createFolder(name: string, parentId?: string | null): Promise<Folder>;
+  /** Déplace un dossier et tout son contenu sous un autre (null = racine). */
+  moveFolder(id: string, parentId: string | null): Promise<void>;
+  /** Range plusieurs notes d'un coup, tout ou rien (null = sans dossier). */
+  moveNotes(noteIds: string[], folderId: string | null): Promise<void>;
+  /** Dossiers proposés pour une note, d'après ce qui est déjà rangé. */
+  suggestFolders(noteId: string): Promise<FolderSuggestion[]>;
+  /** Notes sans dossier, avec leurs meilleures propositions. */
+  inbox(): Promise<InboxItem[]>;
   renameFolder(id: string, name: string): Promise<Folder>;
   /**
    * Supprime un dossier. Conformément au cahier des charges §3.2, la suppression

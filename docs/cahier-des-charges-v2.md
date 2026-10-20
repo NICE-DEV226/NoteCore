@@ -33,6 +33,12 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 - **Partager sans connexion Internet** : paquet `.notecore` (ou archive Markdown) enregistré dans un fichier, ou envoi direct sur le réseau local (lien + QR code, un téléchargement, 10 minutes), mot de passe facultatif.
 - **Importer** : paquet NoteCore, archive d'export, fichiers Markdown d'autres outils ; **n'écrase jamais** une note existante.
 
+### 2.2 ter Ajouté en V2.2 (ADR-009)
+
+- **Dossiers imbriqués** avec glisser-déposer, sélection multiple et sélecteur de destination.
+- **Boîte « À classer »** : proposition de dossier pour chaque note sans dossier (vocabulaire et étiquettes, calcul local), acceptable en un clic ou en lot pour les propositions fiables. L'application propose, l'utilisateur décide.
+- Supprimer un dossier remonte ses notes et sous-dossiers d'un niveau ; ranger ne modifie pas la date de modification.
+
 ### 2.3 Reporté après validation (V2.x)
 
 | Piste | Condition pour la lancer |
@@ -112,6 +118,9 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 10. Un paquet partagé puis importé restitue notes, étiquettes, dossiers et fichiers joints ; le réimporter n'ajoute rien ; importer ne modifie aucune note existante.
 11. Un paquet protégé est illisible sans le bon mot de passe, et un import refusé n'écrit rien.
 12. L'envoi sur le réseau local ne sert qu'un téléchargement, expire, et ne répond pas à un mauvais jeton ; la réception refuse toute adresse hors du réseau local.
+14. Un dossier ne peut pas être déplacé dans lui-même ni dans un de ses descendants ; supprimer un dossier ne supprime ni note ni sous-dossier ; un déplacement groupé échoue en bloc ou réussit en bloc.
+15. Une note hors sujet ou trop courte ne reçoit pas de proposition fiable ; une note déjà rangée ne se « reconnaît » pas elle-même ; aucune note n'est rangée sans action de l'utilisateur.
+16. Une sauvegarde, un export et un paquet partagé conservent l'arborescence des dossiers.
 13. Seuls les types passifs d'une liste blanche (documents, images, son, vidéo, archives) sont confiés à l'application par défaut du système ; tout autre fichier joint est refusé.
 
 ## 6. Risques

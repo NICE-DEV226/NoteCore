@@ -5,7 +5,7 @@
    * l'espace de travail. Toutes les valeurs viennent des données réelles.
    */
   import Icon from './Icon.svelte';
-  import { allTags, createNote, folders, notes, selectNote } from '../stores/workspace';
+  import { allTags, createNote, currentView, folders, inboxCount, notes, selectNote } from '../stores/workspace';
   import { paletteOpen } from '../stores/ui';
   import { mastery, reviewStats, startReview } from '../stores/review';
   import { openGuide } from '../stores/guide';
@@ -73,6 +73,14 @@
         </button>
       </div>
     </header>
+
+    {#if $inboxCount > 0}
+      <button class="inbox-banner" onclick={() => currentView.set({ kind: 'inbox' })}>
+        <Icon name="inbox" size={16} />
+        <span><strong>{$inboxCount} note{$inboxCount > 1 ? 's' : ''} à classer</strong> — NoteCore propose un dossier pour chacune.</span>
+        <Icon name="chevron-right" size={15} />
+      </button>
+    {/if}
 
     {#if $notes.length > 0}
       <section class="review" aria-label="Révision">
@@ -271,6 +279,29 @@
     border-color: var(--text-faint);
   }
 
+  .inbox-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    width: 100%;
+    margin-top: 1.6rem;
+    padding: 0.7rem 1rem;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius-lg);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font: inherit;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .inbox-banner span {
+    flex: 1;
+    color: var(--text);
+  }
+  .inbox-banner:hover {
+    background: var(--surface);
+  }
   section {
     margin-top: 2.4rem;
   }

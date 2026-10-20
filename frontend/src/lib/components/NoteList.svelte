@@ -6,12 +6,20 @@
    */
   import Icon from './Icon.svelte';
   import EmptyState from './EmptyState.svelte';
-  import { derived } from 'svelte/store';
+  import { derived, get } from 'svelte/store';
+  import { dragging, folderPicker } from '../stores/ui';
+  import { folderPath, pathLabel } from '../utils/folders';
   import type { Note } from '../api/types';
   import { excerpt, formatRelative, snippetParts } from '../utils/format';
   import { tagTint } from '../utils/tags';
   import { SEARCH_INPUT_ID } from '../constants';
   import {
+    acceptAllConfident,
+    acceptSuggestion,
+    clearSelection,
+    inboxSuggestions,
+    moveNotesTo,
+    selectedIds,
     createNote,
     currentView,
     filteredNotes,
@@ -35,7 +43,9 @@
       case 'recent':
         return 'Récentes';
       case 'folder':
-        return $folders.find((f) => f.id === $view.folderId)?.name ?? 'Dossier';
+        return pathLabel(folderPath($folders, $view.folderId)) || 'Dossier';
+      case 'inbox':
+        return 'À classer';
       case 'tag':
         return `#${$view.tag}`;
       default:
@@ -70,6 +80,12 @@
           message: 'Créez une note dans ce dossier pour le remplir.'
         };
       }
+      case 'inbox':
+        return {
+          icon: 'notes' as const,
+          title: 'Tout est rangé',
+          message: 'Les notes sans dossier apparaîtront ici, avec des propositions de rangement.'
+        };
       case 'tag':
         return {
           icon: 'notes' as const,
@@ -84,6 +100,75 @@
         };
     }
   });
+
+  // --- sélection multiple et glisser-déposer -----------------------------------
+  let anchorId: string | null = null;
+
+  /** Ordre d'affichage de toutes les notes de la liste (pour la sélection par plage). */
+  const orderedIds = $derived($filteredNotes.map((n) => n.id));
+
+  function onItemClick(e: MouseEvent, id: string): void {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      selectedIds.update((set) => {
+        const next = new Set(set);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      });
+      anchorId = id;
+      return;
+    }
+    if (e.shiftKey && anchorId) {
+      e.preventDefault();
+      const a = orderedIds.indexOf(anchorId);
+      const b = orderedIds.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const [from, to] = a < b ? [a, b] : [b, a];
+        selectedIds.set(new Set(orderedIds.slice(from, to + 1)));
+      }
+      return;
+    }
+    anchorId = id;
+    clearSelection();
+    void selectNote(id);
+  }
+
+  function onItemDragStart(e: DragEvent, id: string): void {
+    // Glisser une note cochée emporte toute la sélection ; sinon, la note seule.
+    const ids = get(selectedIds).has(id) ? [...get(selectedIds)] : [id];
+    e.dataTransfer?.setData('application/x-notecore-notes', JSON.stringify(ids));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    dragging.set({ kind: 'notes', ids });
+  }
+
+  function moveSelectionTo(): void {
+    const ids = [...$selectedIds];
+    folderPicker.set({
+      title: `Ranger ${ids.length} note${ids.length > 1 ? 's' : ''} dans…`,
+      exclude: [],
+      current: null,
+      rootLabel: 'Sans dossier (racine)',
+      onpick: (target) => void moveNotesTo(ids, target)
+    });
+  }
+
+  // --- boîte « À classer » : propositions de dossier ---------------------------
+  const confidentCount = $derived(
+    [...$inboxSuggestions.values()].filter((l) => l[0]?.confidence === 'high').length
+  );
+  let tidying = $state(false);
+  let tidyMessage = $state('');
+
+  async function tidyAll(): Promise<void> {
+    tidying = true;
+    tidyMessage = '';
+    const n = await acceptAllConfident();
+    tidyMessage = n > 0 ? `${n} note${n > 1 ? 's' : ''} rangée${n > 1 ? 's' : ''}. Les autres attendent votre décision.` : '';
+    tidying = false;
+    setTimeout(() => (tidyMessage = ''), 6000);
+  }
+
+  const confidenceLabel = { high: 'Très probable', medium: 'Probable', low: 'Possible' } as const;
 
   /** Création depuis un état vide : la note rejoint la vue active. */
   function createNoteHere(): void {
@@ -150,6 +235,32 @@
     {/if}
   </div>
 
+  {#if $selectedIds.size > 0}
+    <div class="selbar" role="status">
+      <strong>{$selectedIds.size}</strong> sélectionnée{$selectedIds.size > 1 ? 's' : ''}
+      <span class="grow"></span>
+      <button onclick={moveSelectionTo}><Icon name="move" size={13} /> Ranger dans…</button>
+      <button class="plain" onclick={clearSelection}>Annuler</button>
+    </div>
+  {:else if $currentView.kind === 'inbox' && $filteredNotes.length > 0}
+    <div class="tidy">
+      <p>
+        <Icon name="sparkles" size={14} />
+        {#if confidentCount > 0}
+          <strong>{confidentCount}</strong> note{confidentCount > 1 ? 's' : ''} {confidentCount > 1 ? 'ont' : 'a'} un dossier évident.
+        {:else}
+          Aucune proposition évidente : choisissez note par note.
+        {/if}
+      </p>
+      {#if confidentCount > 0}
+        <button disabled={tidying} onclick={() => void tidyAll()}>Ranger les {confidentCount} sûre{confidentCount > 1 ? 's' : ''}</button>
+      {/if}
+      {#if tidyMessage}<small>{tidyMessage}</small>{/if}
+    </div>
+  {:else if $filteredNotes.length > 1 && $currentView.kind !== 'recent'}
+    <p class="tip">Astuce : Ctrl+clic pour choisir plusieurs notes, puis glissez-les dans un dossier.</p>
+  {/if}
+
   <div class="list-inner">
     {#if $hasAnyNote && $searchPending}
       <EmptyState
@@ -192,11 +303,19 @@
           <ul>
             {#each group.notes as note (note.id)}
               {@const hit = $remoteSearchHits?.get(note.id) ?? null}
-              <li class="item-row" class:active={$selectedNoteId === note.id}>
+              <li
+                class="item-row"
+                class:active={$selectedNoteId === note.id}
+                class:picked={$selectedIds.has(note.id)}
+                draggable="true"
+                ondragstart={(e) => onItemDragStart(e, note.id)}
+                ondragend={() => dragging.set(null)}
+              >
                 <button
                   class="item"
                   aria-current={$selectedNoteId === note.id ? 'true' : undefined}
-                  onclick={() => void selectNote(note.id)}
+                  aria-pressed={$selectedIds.has(note.id) ? 'true' : undefined}
+                  onclick={(e) => onItemClick(e, note.id)}
                 >
                   <span class="title">{note.title || 'Sans titre'}</span>
                   {#if hit}
@@ -230,6 +349,21 @@
                 >
                   <Icon name="star" size={14} filled={note.isPinned} />
                 </button>
+                {#if $currentView.kind === 'inbox'}
+                  {@const top = $inboxSuggestions.get(note.id)?.[0]}
+                  <div class="suggest" class:none={!top}>
+                    {#if top}
+                      <span class="why" title={[top.tags.length ? `Étiquettes en commun : ${top.tags.join(', ')}` : '', top.terms.length ? `Mots en commun : ${top.terms.join(', ')}` : ''].filter(Boolean).join(' — ') || 'Vocabulaire proche des notes de ce dossier'}>
+                        <Icon name="sparkles" size={12} />
+                        <span class="path">{pathLabel(top.path)}</span>
+                        <em class={top.confidence}>{confidenceLabel[top.confidence]}</em>
+                      </span>
+                      <button class="accept" onclick={() => void acceptSuggestion(note.id, top.folderId)}>Ranger</button>
+                    {:else}
+                      <span class="why muted">Pas de proposition : trop peu de texte ou aucun dossier proche.</span>
+                    {/if}
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -444,6 +578,156 @@
     color: var(--text-faint);
   }
 
+  .item-row.picked {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .item-row[draggable='true'] {
+    cursor: grab;
+  }
+  .selbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0.8rem 0.4rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+    border-radius: var(--radius);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 0.8rem;
+  }
+  .selbar .grow {
+    flex: 1;
+  }
+  .selbar button {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .selbar button.plain {
+    background: transparent;
+    color: var(--accent-text);
+  }
+  .tip {
+    margin: 0 1rem 0.3rem;
+    color: var(--text-faint);
+    font-size: 0.72rem;
+  }
+  .tidy {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0 0.8rem 0.5rem;
+    padding: 0.6rem 0.7rem;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius);
+    background: var(--accent-soft);
+    font-size: 0.8rem;
+  }
+  .tidy p {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    color: var(--text);
+  }
+  .tidy :global(svg) {
+    color: var(--accent-text);
+  }
+  .tidy button {
+    justify-self: start;
+    padding: 0.25rem 0.8rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tidy button:disabled {
+    opacity: 0.6;
+  }
+  .tidy small {
+    color: var(--text-soft);
+  }
+  .suggest {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: -0.15rem 0.6rem 0.5rem 0.85rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 0.74rem;
+  }
+  .suggest.none {
+    background: transparent;
+    border-style: dashed;
+  }
+  .why {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    color: var(--accent-text);
+  }
+  .why.muted {
+    color: var(--text-faint);
+  }
+  .why .path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .why em {
+    flex-shrink: 0;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    font-style: normal;
+    font-size: 0.66rem;
+    font-weight: 650;
+    background: var(--chip-bg);
+    color: var(--text-soft);
+  }
+  .why em.high {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .why em.medium {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .accept {
+    flex-shrink: 0;
+    padding: 0.15rem 0.6rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--accent-text);
+    font: inherit;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .accept:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
   .pin {
     position: absolute;
     top: 0.5rem;

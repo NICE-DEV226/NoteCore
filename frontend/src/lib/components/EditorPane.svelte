@@ -15,6 +15,8 @@
   import MarkdownPreview from '../editor/MarkdownPreview.svelte';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
+  import { acceptSuggestion, folderTree, inboxSuggestions } from '../stores/workspace';
+  import { pathLabel, visibleNodes } from '../utils/folders';
   import { startReview } from '../stores/review';
   import { nextClozeNumber } from '../utils/cards';
   import { formatFullDate, formatRelative, countWords } from '../utils/format';
@@ -346,6 +348,15 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  // --- classement : liste indentée et proposition de dossier ---------------
+  const folderOptions = $derived(visibleNodes($folderTree, new Set($folders.map((f) => f.id))));
+  let dismissed = $state<Set<string>>(new Set());
+  const proposal = $derived.by(() => {
+    if (!note || note.folderId || dismissed.has(note.id)) return null;
+    const top = $inboxSuggestions.get(note.id)?.[0];
+    return top && top.confidence !== 'low' ? top : null;
   });
 
   const wordCount = $derived(note ? countWords(note.content) : 0);
@@ -704,11 +715,20 @@
             <Icon name="folder" size={14} />
             <select value={note.folderId ?? ''} onchange={onFolderMove} aria-label="Dossier de la note">
               <option value="">Sans dossier</option>
-              {#each $folders as folder (folder.id)}
-                <option value={folder.id}>{folder.name}</option>
+              {#each folderOptions as node (node.folder.id)}
+                <option value={node.folder.id}>{'\u00A0\u00A0\u00A0'.repeat(node.depth)}{node.depth > 0 ? '↳ ' : ''}{node.folder.name}</option>
               {/each}
             </select>
           </label>
+
+          {#if proposal}
+            <span class="proposal" role="status" title={[proposal.tags.length ? `Étiquettes en commun : ${proposal.tags.join(', ')}` : '', proposal.terms.length ? `Mots en commun : ${proposal.terms.join(', ')}` : ''].filter(Boolean).join(' — ')}>
+              <Icon name="sparkles" size={13} />
+              Ranger dans <strong>{pathLabel(proposal.path)}</strong> ?
+              <button class="yes" onclick={() => note && void acceptSuggestion(note.id, proposal.folderId)}>Ranger</button>
+              <button class="no" aria-label="Ignorer la proposition" onclick={() => note && (dismissed = new Set(dismissed).add(note.id))}><Icon name="x" size={11} stroke={2.4} /></button>
+            </span>
+          {/if}
 
           <div class="tags">
             {#each note.tags ?? [] as tag (tag)}
@@ -1130,6 +1150,45 @@
     font: inherit;
     font-size: 0.82rem;
     cursor: pointer;
+  }
+  .proposal {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+    border: 1px dashed var(--accent);
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 0.76rem;
+  }
+  .proposal strong {
+    color: var(--text);
+  }
+  .proposal .yes {
+    padding: 0.1rem 0.6rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .proposal .no {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .proposal .no:hover {
+    background: oklch(0 0 0 / 0.1);
   }
   .tags {
     display: flex;

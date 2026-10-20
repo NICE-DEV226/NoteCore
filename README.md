@@ -31,7 +31,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 
 **Organisation**
 
-- Notes en Markdown, dossiers, tags colorés, épinglage.
+- Notes en Markdown, **dossiers imbriqués** (Semestre › Matière › TD), tags colorés, épinglage.
 - Recherche plein texte (SQLite FTS5) avec extraits où les termes trouvés sont surlignés.
 - Enregistrement automatique après une courte pause, indicateur d'état (`enregistré`, `modifié`, `en cours`, `erreur`), plus `Ctrl/Cmd+S`.
 
@@ -47,6 +47,12 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - Cartes écrites **dans la note** : `{{c1::mot caché}}`, `{{c1::mot::indice}}` ou une ligne `Question :: Réponse`. Pas de seconde copie à synchroniser.
 - Séance au clavier (`Espace`, `1`–`4`, `Z` pour annuler), planifiée par l'algorithme **FSRS**, entièrement local.
 - Accueil : cartes à voir, série de jours, activité sur 14 jours, maîtrise par dossier et par étiquette.
+
+**Ranger sans effort**
+
+- **Glissez-déposez** une note (ou plusieurs : Ctrl/Maj+clic) sur un dossier, ou un dossier sur un autre. Sans souris : *Ranger dans…* et *Déplacer ce dossier…*.
+- **À classer** : les notes sans dossier arrivent dans une boîte, avec **une proposition de dossier** pour chacune, calculée localement d'après le vocabulaire et les étiquettes des notes déjà rangées. *Ranger* l'accepte ; *Ranger les N sûres* range d'un coup les propositions évidentes. NoteCore propose, vous décidez — rien n'est rangé tout seul.
+- Supprimer un dossier ne supprime rien : notes et sous-dossiers remontent d'un niveau.
 
 **Partage hors connexion**
 
@@ -282,6 +288,7 @@ Base locale SQLite, en mode WAL :
 - [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) — architecture, modèle de données, sauvegardes, sécurité
 - [`docs/architecture/ADR-001`](docs/architecture/ADR-001-stack-et-style.md) à [`ADR-007`](docs/architecture/ADR-007-revision-espacee.md) — décisions techniques et raisons
 - [`ADR-008`](docs/architecture/ADR-008-partage-hors-connexion.md) — partage hors connexion, import et lecture des fichiers joints
+- [`ADR-009`](docs/architecture/ADR-009-rangement-intelligent.md) — dossiers imbriqués et rangement intelligent
 - [`docs/cahier-des-charges-v2.md`](docs/cahier-des-charges-v2.md) — V2 : réviser ses notes (périmètre, critères, risques)
 - [`docs/revue-ergonomie.md`](docs/revue-ergonomie.md) — revue d'ergonomie et correctifs appliqués
 - [`docs/procedure-build.md`](docs/procedure-build.md) — build et développement en détail

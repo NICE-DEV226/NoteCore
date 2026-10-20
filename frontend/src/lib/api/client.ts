@@ -2,6 +2,8 @@ import type { NoteCoreApi } from './contract';
 import { mockApi } from './mock';
 import type {
   AppInfo,
+  FolderSuggestion,
+  InboxItem,
   ArchiveListing,
   AttachmentRef,
   ImportResult,
@@ -96,7 +98,8 @@ class WailsAdapter implements NoteCoreApi {
   }
 
   async listFolders(): Promise<Folder[]> {
-    return ((await this.svc.ListFolders()) as Folder[] | null) ?? [];
+    const raw = ((await this.svc.ListFolders()) as Folder[] | null) ?? [];
+    return raw.map((f) => ({ ...f, parentId: f.parentId ?? null }));
   }
 
   async createNote(data: { title?: string; folderId?: string | null }): Promise<Note> {
@@ -126,8 +129,25 @@ class WailsAdapter implements NoteCoreApi {
     await this.svc.DeleteNote(id);
   }
 // FUNCTION asyncrhone for folder creation
-  async createFolder(name: string): Promise<Folder> {
-    return (await this.svc.CreateFolder(name)) as Folder;
+  async createFolder(name: string, parentId?: string | null): Promise<Folder> {
+    return (await this.svc.CreateFolder(name, parentId ?? '')) as Folder;
+  }
+
+  async moveFolder(id: string, parentId: string | null): Promise<void> {
+    await this.svc.MoveFolder(id, parentId ?? '');
+  }
+
+  async moveNotes(noteIds: string[], folderId: string | null): Promise<void> {
+    await this.svc.MoveNotes(noteIds, folderId ?? '');
+  }
+
+  async suggestFolders(noteId: string): Promise<FolderSuggestion[]> {
+    return ((await this.svc.SuggestFolders(noteId)) as FolderSuggestion[] | null) ?? [];
+  }
+
+  async inbox(): Promise<InboxItem[]> {
+    const raw = ((await this.svc.Inbox()) as InboxItem[] | null) ?? [];
+    return raw.map((i) => ({ ...i, suggestions: i.suggestions ?? [] }));
   }
 
   async renameFolder(id: string, name: string): Promise<Folder> {

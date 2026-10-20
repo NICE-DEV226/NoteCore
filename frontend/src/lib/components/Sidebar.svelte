@@ -13,6 +13,12 @@
     allTags,
     createFolder,
     createNote,
+    expandedFolders,
+    folderTree,
+    inboxCount,
+    moveFolder,
+    moveNotesTo,
+    toggleFolder,
     currentView,
     deleteFolder,
     favoritesCount,
@@ -27,7 +33,8 @@
     restorePreview,
     selectedNoteId
   } from '../stores/workspace';
-  import { paletteOpen, settingsOpen } from '../stores/ui';
+  import { dragging, folderPicker, paletteOpen, settingsOpen } from '../stores/ui';
+  import { canDropFolder, subtreeIds, visibleNodes } from '../utils/folders';
   import { reviewStats, startReview } from '../stores/review';
   import { filesOpen } from '../stores/files';
   import { theme, setThemePref } from '../stores/appTheme';
@@ -35,6 +42,8 @@
   import type { RestorePreview, View } from '../api/types';
 
   let creatingFolder = $state(false);
+  /** Dossier dans lequel on crée (null = racine). */
+  let creatingParent = $state<string | null>(null);
   let newFolderName = $state('');
   let folderPendingDelete = $state<string | null>(null);
   let editingFolderId = $state<string | null>(null);
@@ -68,7 +77,9 @@
     return view.kind === kind;
   }
 
-  function startCreateFolder() {
+  function startCreateFolder(parentId: string | null = null) {
+    creatingParent = parentId;
+    if (parentId) expandedFolders.update((set) => new Set(set).add(parentId));
     creatingFolder = true;
     newFolderName = '';
     folderError.set(null);
@@ -85,7 +96,7 @@
     // En cas d'échec, le champ reste ouvert et l'erreur s'affiche dessous :
     // la saisie n'est pas perdue et l'erreur n'est pas confondue avec un
     // problème d'enregistrement de la note ouverte.
-    if (await createFolder(name)) {
+    if (await createFolder(name, creatingParent)) {
       creatingFolder = false;
       newFolderName = '';
     } else {
@@ -119,6 +130,69 @@
   function confirmDeleteFolder() {
     if (folderPendingDelete) void deleteFolder(folderPendingDelete);
     folderPendingDelete = null;
+  }
+
+  const visible = $derived(visibleNodes($folderTree, $expandedFolders));
+  let dropTarget = $state<string | 'root' | null>(null);
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Un dépôt est-il possible sur cette cible avec ce qui est glissé ? */
+  function acceptsDrop(target: string | null): boolean {
+    const d = $dragging;
+    if (!d) return false;
+    if (d.kind === 'notes') return true;
+    return canDropFolder($folders, d.ids[0], target);
+  }
+
+  function onDragOver(e: DragEvent, target: string | null): void {
+    if (!acceptsDrop(target)) return;
+    e.preventDefault(); // autorise le dépôt
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropTarget = target ?? 'root';
+  }
+
+  function onDragEnterFolder(id: string): void {
+    // Survoler un dossier replié un instant le déplie : on peut viser un sous-dossier.
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      if ($dragging && !$expandedFolders.has(id)) toggleFolder(id);
+    }, 650);
+  }
+
+  async function onDrop(e: DragEvent, target: string | null): Promise<void> {
+    e.preventDefault();
+    const d = $dragging;
+    dropTarget = null;
+    dragging.set(null);
+    if (hoverTimer) clearTimeout(hoverTimer);
+    if (!d || !acceptsDrop(target)) return;
+    if (d.kind === 'notes') await moveNotesTo(d.ids, target);
+    else await moveFolder(d.ids[0], target);
+  }
+
+  function startDragFolder(e: DragEvent, id: string): void {
+    e.dataTransfer?.setData('application/x-notecore-folder', id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    dragging.set({ kind: 'folder', ids: [id] });
+  }
+
+  function endDrag(): void {
+    dragging.set(null);
+    dropTarget = null;
+    if (hoverTimer) clearTimeout(hoverTimer);
+  }
+
+  /** Déplacer un dossier sans glisser-déposer : sélecteur de destination. */
+  function pickDestination(id: string, name: string): void {
+    const blocked = [...subtreeIds($folders, id)];
+    const current = $folders.find((f) => f.id === id)?.parentId ?? null;
+    folderPicker.set({
+      title: `Déplacer « ${name} » dans…`,
+      exclude: blocked,
+      current,
+      rootLabel: 'Racine (aucun dossier parent)',
+      onpick: (target) => void moveFolder(id, target)
+    });
   }
 
   const viewLabels = [
@@ -195,6 +269,20 @@
             <span class="due" aria-label="cartes à voir">{($reviewStats?.due ?? 0) + ($reviewStats?.new ?? 0)}</span>
           {/if}
         </button>
+        {#if $inboxCount > 0}
+          <button
+            class="nav-item"
+            class:active={isActive($currentView, 'inbox') && $selectedNoteId !== null}
+            class:current-view={isActive($currentView, 'inbox')}
+            aria-current={isActive($currentView, 'inbox') ? 'page' : undefined}
+            title="Notes sans dossier, avec des propositions de rangement"
+            onclick={() => currentView.set({ kind: 'inbox' })}
+          >
+            <Icon name="inbox" size={16} />
+            <span class="nav-label">À classer</span>
+            <span class="count todo">{$inboxCount}</span>
+          </button>
+        {/if}
         {#each viewLabels as item (item.kind)}
           <button
             class="nav-item"
@@ -211,14 +299,22 @@
       </nav>
 
       <div class="section">
-        <div class="section-head">
+        <div
+          class="section-head root-drop"
+          class:drop={dropTarget === 'root'}
+          role="presentation"
+          ondragover={(e) => onDragOver(e, null)}
+          ondragleave={() => (dropTarget = dropTarget === 'root' ? null : dropTarget)}
+          ondrop={(e) => void onDrop(e, null)}
+        >
           <span class="section-title">Dossiers</span>
-          <button class="mini-btn" title="Nouveau dossier" aria-label="Nouveau dossier" onclick={startCreateFolder}>
+          {#if $dragging}<span class="drop-hint">Déposer ici : à la racine</span>{/if}
+          <button class="mini-btn" title="Nouveau dossier" aria-label="Nouveau dossier" onclick={() => startCreateFolder(null)}>
             <Icon name="plus" size={13} stroke={2.2} />
           </button>
         </div>
 
-        {#if creatingFolder}
+        {#if creatingFolder && creatingParent === null}
           <input
             class="folder-input"
             bind:this={folderInput}
@@ -236,12 +332,20 @@
           />
         {/if}
 
-        <ul class="list">
-          {#each $folders as folder (folder.id)}
-            <li class="row">
+        <ul class="list tree" role="tree" aria-label="Dossiers">
+          {#each visible as node (node.folder.id)}
+            {@const folder = node.folder}
+            <li
+              class="row"
+              role="treeitem"
+              aria-selected={isActive($currentView, 'folder', folder.id)}
+              aria-expanded={node.children.length > 0 ? $expandedFolders.has(folder.id) : undefined}
+              aria-level={node.depth + 1}
+            >
               {#if editingFolderId === folder.id}
                 <input
                   class="folder-input"
+                  style:margin-left="{node.depth * 0.9}rem"
                   bind:this={folderRenameInput}
                   bind:value={folderEditName}
                   aria-label={`Renommer le dossier ${folder.name}`}
@@ -255,36 +359,79 @@
                   onblur={() => void submitRenameFolder()}
                 />
               {:else}
-                <button
-                  class="nav-item folder"
-                  class:current-view={isActive($currentView, 'folder', folder.id)}
-                  aria-current={isActive($currentView, 'folder', folder.id) ? 'page' : undefined}
-                  onclick={() => currentView.set({ kind: 'folder', folderId: folder.id })}
-                  ondblclick={() => startRenameFolder(folder.id, folder.name)}
-                  title="Double-clic pour renommer"
+                <div
+                  class="node"
+                  class:drop={dropTarget === folder.id}
+                  style:padding-left="{node.depth * 0.9}rem"
+                  role="presentation"
+                  draggable="true"
+                  ondragstart={(e) => startDragFolder(e, folder.id)}
+                  ondragend={endDrag}
+                  ondragover={(e) => onDragOver(e, folder.id)}
+                  ondragenter={() => onDragEnterFolder(folder.id)}
+                  ondragleave={() => (dropTarget = dropTarget === folder.id ? null : dropTarget)}
+                  ondrop={(e) => void onDrop(e, folder.id)}
                 >
-                  <Icon name="folder" size={16} />
-                  <span class="nav-label">{folder.name}</span>
-                  <span class="count">{folderCounts.get(folder.id) ?? 0}</span>
-                </button>
-                <span class="row-actions">
                   <button
-                    class="row-btn"
-                    title={`Renommer « ${folder.name} »`}
-                    aria-label={`Renommer le dossier ${folder.name}`}
-                    onclick={() => startRenameFolder(folder.id, folder.name)}
+                    class="twisty"
+                    class:hidden={node.children.length === 0}
+                    tabindex="-1"
+                    aria-label={$expandedFolders.has(folder.id) ? 'Replier' : 'Déplier'}
+                    onclick={() => toggleFolder(folder.id)}
                   >
-                    <Icon name="edit" size={13} />
+                    <Icon name={$expandedFolders.has(folder.id) ? 'chevron-down' : 'chevron-right'} size={13} stroke={2.2} />
                   </button>
                   <button
-                    class="row-btn danger"
-                    title={`Supprimer « ${folder.name} » (les notes sont conservées)`}
-                    aria-label={`Supprimer le dossier ${folder.name}`}
-                    onclick={() => (folderPendingDelete = folder.id)}
+                    class="nav-item folder"
+                    class:current-view={isActive($currentView, 'folder', folder.id)}
+                    aria-current={isActive($currentView, 'folder', folder.id) ? 'page' : undefined}
+                    onclick={() => currentView.set({ kind: 'folder', folderId: folder.id })}
+                    ondblclick={() => startRenameFolder(folder.id, folder.name)}
+                    title={`${folder.name} — glissez des notes ici pour les ranger`}
                   >
-                    <Icon name="trash" size={13} />
+                    <Icon name="folder" size={16} />
+                    <span class="nav-label">{folder.name}</span>
+                    <span class="count">{node.total}</span>
                   </button>
-                </span>
+                  <span class="row-actions">
+                    <button class="row-btn" title="Nouveau sous-dossier" aria-label={`Nouveau sous-dossier dans ${folder.name}`} onclick={() => startCreateFolder(folder.id)}>
+                      <Icon name="folder-plus" size={13} />
+                    </button>
+                    <button class="row-btn" title="Déplacer ce dossier…" aria-label={`Déplacer le dossier ${folder.name}`} onclick={() => pickDestination(folder.id, folder.name)}>
+                      <Icon name="move" size={13} />
+                    </button>
+                    <button class="row-btn" title={`Renommer « ${folder.name} »`} aria-label={`Renommer le dossier ${folder.name}`} onclick={() => startRenameFolder(folder.id, folder.name)}>
+                      <Icon name="edit" size={13} />
+                    </button>
+                    <button
+                      class="row-btn danger"
+                      title={`Supprimer « ${folder.name} » (notes et sous-dossiers conservés)`}
+                      aria-label={`Supprimer le dossier ${folder.name}`}
+                      onclick={() => (folderPendingDelete = folder.id)}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  </span>
+                </div>
+              {/if}
+
+              {#if creatingFolder && creatingParent === folder.id}
+                <input
+                  class="folder-input"
+                  style:margin-left="{(node.depth + 1) * 0.9 + 1.2}rem"
+                  bind:this={folderInput}
+                  bind:value={newFolderName}
+                  placeholder={`Sous-dossier de ${folder.name}`}
+                  aria-label={`Nom du nouveau sous-dossier de ${folder.name}`}
+                  onkeydown={(e) => {
+                    if (e.key === 'Enter') submitFolder();
+                    if (e.key === 'Escape') {
+                      creatingFolder = false;
+                      newFolderName = '';
+                    }
+                  }}
+                  onblur={submitFolder}
+                />
               {/if}
             </li>
           {/each}
@@ -351,7 +498,7 @@
 {#if folderPendingDelete}
   <ConfirmDialog
     title="Supprimer ce dossier ?"
-    message="Les notes du dossier ne seront pas supprimées : elles resteront accessibles, sans dossier de rattachement."
+    message="Rien n'est supprimé : les notes et les sous-dossiers de ce dossier remontent d'un niveau, dans le dossier qui le contient (ou à la racine)."
     confirmLabel="Supprimer le dossier"
     onconfirm={confirmDeleteFolder}
     oncancel={() => (folderPendingDelete = null)}
@@ -454,6 +601,7 @@
   .scroll {
     flex: 1;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     padding: 0 0.5rem 0.5rem;
   }
@@ -571,8 +719,62 @@
     display: flex;
     align-items: center;
   }
-  .row .nav-item {
-    padding-right: 3.4rem;
+  .row {
+    display: block;
+  }
+  .node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    border-radius: var(--radius-sm);
+  }
+  .node.drop,
+  .root-drop.drop {
+    background: var(--accent-soft);
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+  }
+  .node .nav-item {
+    flex: 1;
+    min-width: 0;
+    padding-right: 5.6rem;
+  }
+  .twisty {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+  .twisty:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .twisty.hidden {
+    visibility: hidden;
+  }
+  .root-drop {
+    border-radius: var(--radius-sm);
+  }
+  .drop-hint {
+    flex: 1;
+    margin-left: 0.4rem;
+    color: var(--accent-text);
+    font-size: 0.7rem;
+  }
+  .count.todo {
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 650;
   }
   .row-actions {
     position: absolute;
@@ -580,12 +782,12 @@
     display: none;
     gap: 1px;
   }
-  .row:hover .row-actions,
-  .row:focus-within .row-actions {
+  .node:hover .row-actions,
+  .node:focus-within .row-actions {
     display: inline-flex;
   }
-  .row:hover .count,
-  .row:focus-within .count {
+  .node:hover .count,
+  .node:focus-within .count {
     visibility: hidden;
   }
   .row-btn {
