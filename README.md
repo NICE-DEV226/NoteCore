@@ -163,6 +163,18 @@ NoteCore s'affiche avec le runtime **WebView2** (déjà présent sous Windows 11
 
 Désinstaller : `sudo apt remove notecore` (deb), `sudo pacman -R notecore` (Arch, paquet construit avec `makepkg`), `./install.sh --uninstall` (archive).
 
+### Mettre à jour
+
+**Installez la nouvelle version par-dessus l'ancienne : il n'est pas nécessaire de désinstaller.** Vos notes ne sont pas touchées (elles sont hors du dossier d'installation) ; si le schéma de la base évolue, une copie de sécurité est écrite avant la migration et son chemin s'affiche au lancement.
+
+| Installation | Pour mettre à jour |
+| --- | --- |
+| Windows, installateur | Fermez NoteCore, lancez le nouvel installateur |
+| Windows, exécutable autonome | Remplacez le fichier |
+| Debian / Ubuntu | `sudo apt install ./notecore-<version>-linux-amd64.deb` |
+| Archive Linux | Relancez `./install.sh` de la nouvelle archive |
+| Arch | `makepkg -si` dans `packaging/aur` (mettez d'abord le dépôt à jour : `git pull`) |
+
 ### À partir des sources
 
 Voir [docs/procedure-build.md](docs/procedure-build.md).
