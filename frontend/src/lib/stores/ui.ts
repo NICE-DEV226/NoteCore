@@ -58,3 +58,6 @@ export const folderPicker = writable<{
   rootLabel: string;
   onpick: (folderId: string | null) => void;
 } | null>(null);
+
+/** Boîte « Nouvelle matière » (modèles de dossiers) ; parentId = dossier d'accueil proposé. */
+export const templateDialog = writable<{ parentId: string | null } | null>(null);

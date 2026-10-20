@@ -33,6 +33,13 @@ Les dossiers étaient plats : impossible de refléter *Semestre 3 → Réseaux �
 13. **Honnêteté** : une note trop courte ne reçoit rien ; une note hors sujet ne reçoit pas de proposition « fiable » ; une note déjà rangée est comparée **sans sa propre contribution** (elle ne se confirme pas elle-même) ; à égalité, le dossier le plus précis passe avant son parent. Chaque proposition **dit pourquoi** (étiquettes et mots en commun). Les niveaux de confiance sont « très probable » (score ≥ 0,45 et marge ≥ 0,08 sur la deuxième), « probable » (≥ 0,25) et « possible ».
 14. **Jamais de rangement automatique non demandé** : l'application propose, l'utilisateur décide.
 
+### Modèles de matière
+
+14. **Une structure en un clic** : « Nouvelle matière » crée d'un coup *Réseaux* avec *Cours*, *TD*, *TP*, *Révisions*, *Examens* — ou un projet, un semestre, une année. La structure se décrit par un **texte indenté** (un niveau = deux espaces), que l'utilisateur modifie avant de valider ; `{nom}` est remplacé par le nom saisi. Un aperçu en direct montre l'arbre, signale les erreurs ligne par ligne et compte les dossiers à créer.
+15. **Tout ou rien, sans doublon** : la création se fait en une transaction côté Go (`CreateFolderTree`) ; un dossier de même nom (casse ignorée) déjà présent au même endroit est **réutilisé**, pas dupliqué — appliquer deux fois le même modèle, ou un modèle sur une matière existante, complète la structure sans rien casser. Bornes vérifiées dans le backend : 200 dossiers, 100 caractères par nom, profondeur maximale en comptant celle du dossier d'accueil.
+16. **Modèles personnels** : « Enregistrer comme modèle… » garde la structure dans les réglages locaux (un réglage par modèle, 6 au plus, texte de 380 caractères au plus pour tenir dans la limite de 512 octets d'un réglage). Ils se suppriment depuis la boîte. Aucun modèle n'est envoyé ni partagé.
+17. Accès : le bouton de la section *Dossiers*, l'action *Ajouter une structure* d'un dossier (la structure s'y crée), et la palette de commandes. L'arbre se trie par nom : l'ordre du modèle n'est pas conservé.
+
 ## Options considérées
 
 - **Étiquettes seules** : déjà là, mais elles ne structurent pas un cours ; les dossiers restent le modèle mental des étudiants.

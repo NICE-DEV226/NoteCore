@@ -323,3 +323,153 @@ func (s *Service) MoveNotes(ctx context.Context, noteIDs []string, folderID stri
 	}
 	return tx.Commit()
 }
+
+// --- modèles de matière (ADR-009) ---------------------------------------------
+
+// FolderSpec décrit un dossier à créer, avec ses sous-dossiers : la structure
+// d'un modèle (« Réseaux » avec Cours, TD, TP, Révisions…).
+type FolderSpec struct {
+	Name     string       `json:"name"`
+	Children []FolderSpec `json:"children,omitempty"`
+}
+
+// TreeResult dit ce que l'application d'un modèle a réellement fait.
+type TreeResult struct {
+	Created []Folder `json:"created"`
+	// Existing : dossiers déjà présents au bon endroit, réutilisés tels quels.
+	Existing int `json:"existing"`
+	// RootIDs : identifiants des dossiers de premier niveau du modèle.
+	RootIDs []string `json:"rootIds"`
+}
+
+const (
+	maxTreeNodes  = 200
+	maxFolderName = 100
+)
+
+// specHeight : hauteur de la structure (un dossier seul : 1), bornée.
+func specHeight(specs []FolderSpec, depth int) int {
+	best := depth
+	if depth > MaxFolderDepth+1 {
+		return depth
+	}
+	for _, sp := range specs {
+		if h := specHeight(sp.Children, depth+1); h > best {
+			best = h
+		}
+	}
+	if len(specs) == 0 {
+		return depth - 1
+	}
+	return best
+}
+
+func countSpecs(specs []FolderSpec) int {
+	n := 0
+	for _, sp := range specs {
+		n += 1 + countSpecs(sp.Children)
+	}
+	return n
+}
+
+func validateSpecs(specs []FolderSpec) error {
+	for _, sp := range specs {
+		name := strings.TrimSpace(sp.Name)
+		switch {
+		case name == "":
+			return errors.New("un dossier du modèle n'a pas de nom")
+		case len([]rune(name)) > maxFolderName:
+			return fmt.Errorf("le nom « %.30s… » dépasse %d caractères", name, maxFolderName)
+		}
+		if err := validateSpecs(sp.Children); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CreateFolderTree applique un modèle : crée la structure sous parentID ("" =
+// racine), en UNE transaction (tout ou rien). Un dossier de même nom déjà
+// présent au même endroit est réutilisé, pas dupliqué : appliquer le même modèle
+// deux fois complète la structure sans rien casser.
+func (s *Service) CreateFolderTree(ctx context.Context, parentID string, specs []FolderSpec) (TreeResult, error) {
+	var res TreeResult
+	if len(specs) == 0 {
+		return res, errors.New("le modèle est vide")
+	}
+	if err := validateSpecs(specs); err != nil {
+		return res, err
+	}
+	if n := countSpecs(specs); n > maxTreeNodes {
+		return res, fmt.Errorf("modèle trop grand (%d dossiers, maximum %d)", n, maxTreeNodes)
+	}
+	parentID = strings.TrimSpace(parentID)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return res, fmt.Errorf("création du modèle : %w", err)
+	}
+	defer tx.Rollback()
+
+	parents, err := folderParents(ctx, tx)
+	if err != nil {
+		return res, err
+	}
+	base := 0
+	if parentID != "" {
+		if _, ok := parents[parentID]; !ok {
+			return res, fmt.Errorf("dossier parent %q introuvable", parentID)
+		}
+		base = depthOf(parents, parentID)
+	}
+	if base+specHeight(specs, 1) > MaxFolderDepth {
+		return res, fmt.Errorf("profondeur maximale dépassée (%d niveaux) : choisissez un dossier moins profond", MaxFolderDepth)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	var build func(parent string, nodes []FolderSpec, top bool) error
+	build = func(parent string, nodes []FolderSpec, top bool) error {
+		for _, sp := range nodes {
+			name := strings.TrimSpace(sp.Name)
+			var id string
+			err := tx.QueryRowContext(ctx,
+				`SELECT id FROM folders WHERE COALESCE(parent_id, '') = ? AND name = ? COLLATE NOCASE`,
+				parent, name).Scan(&id)
+			switch {
+			case err == nil:
+				res.Existing++
+			case errors.Is(err, sql.ErrNoRows):
+				id = newID()
+				var parentArg any
+				f := Folder{ID: id, Name: name, CreatedAt: now, UpdatedAt: now}
+				if parent != "" {
+					parentArg = parent
+					p := parent
+					f.ParentID = &p
+				}
+				if _, err := tx.ExecContext(ctx,
+					`INSERT INTO folders (id, parent_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+					id, parentArg, name, now, now); err != nil {
+					return fmt.Errorf("création du dossier « %s » : %w", name, err)
+				}
+				res.Created = append(res.Created, f)
+			default:
+				return fmt.Errorf("lecture des dossiers : %w", err)
+			}
+			if top {
+				res.RootIDs = append(res.RootIDs, id)
+			}
+			if err := build(id, sp.Children, false); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := build(parentID, specs, true); err != nil {
+		return TreeResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TreeResult{}, fmt.Errorf("création du modèle : %w", err)
+	}
+	return res, nil
+}

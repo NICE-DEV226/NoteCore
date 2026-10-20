@@ -259,3 +259,18 @@ export interface InboxItem {
   noteId: string;
   suggestions: FolderSuggestion[];
 }
+
+// --- modèles de matière (ADR-009) -------------------------------------------
+
+/** Un dossier à créer, avec ses sous-dossiers. */
+export interface FolderSpec {
+  name: string;
+  children?: FolderSpec[];
+}
+
+export interface TreeResult {
+  created: Folder[];
+  /** Dossiers déjà présents au bon endroit, réutilisés. */
+  existing: number;
+  rootIds: string[];
+}

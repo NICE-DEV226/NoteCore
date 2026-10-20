@@ -18,12 +18,13 @@
   import ShareDialog from '../lib/components/ShareDialog.svelte';
   import ImportDialog from '../lib/components/ImportDialog.svelte';
   import FolderPickerDialog from '../lib/components/FolderPickerDialog.svelte';
+  import FolderTemplateDialog from '../lib/components/FolderTemplateDialog.svelte';
   import { viewer } from '../lib/stores/files';
   import { onMount } from 'svelte';
   import { guideOpen, initGuide } from '../lib/stores/guide';
   import { reviewOpen } from '../lib/stores/review';
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
-  import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog } from '../lib/stores/ui';
+  import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
@@ -107,6 +108,10 @@
 
 {#if $importOpen}
   <ImportDialog />
+{/if}
+
+{#if $templateDialog}
+  <FolderTemplateDialog />
 {/if}
 
 {#if $folderPicker}

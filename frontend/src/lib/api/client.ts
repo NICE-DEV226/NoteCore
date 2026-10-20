@@ -2,6 +2,8 @@ import type { NoteCoreApi } from './contract';
 import { mockApi } from './mock';
 import type {
   AppInfo,
+  FolderSpec,
+  TreeResult,
   FolderSuggestion,
   InboxItem,
   ArchiveListing,
@@ -131,6 +133,15 @@ class WailsAdapter implements NoteCoreApi {
 // FUNCTION asyncrhone for folder creation
   async createFolder(name: string, parentId?: string | null): Promise<Folder> {
     return (await this.svc.CreateFolder(name, parentId ?? '')) as Folder;
+  }
+
+  async createFolderTree(parentId: string | null, tree: FolderSpec[]): Promise<TreeResult> {
+    const r = (await this.svc.CreateFolderTree(parentId ?? '', tree)) as Partial<TreeResult> | null;
+    return {
+      created: (r?.created ?? []).map((f) => ({ ...f, parentId: f.parentId ?? null })),
+      existing: r?.existing ?? 0,
+      rootIds: r?.rootIds ?? []
+    };
   }
 
   async moveFolder(id: string, parentId: string | null): Promise<void> {

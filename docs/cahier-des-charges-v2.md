@@ -37,6 +37,7 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 
 - **Dossiers imbriqués** avec glisser-déposer, sélection multiple et sélecteur de destination.
 - **Boîte « À classer »** : proposition de dossier pour chaque note sans dossier (vocabulaire et étiquettes, calcul local), acceptable en un clic ou en lot pour les propositions fiables. L'application propose, l'utilisateur décide.
+- **Modèles de matière** : créer une structure de dossiers (Cours, TD, TP, Révisions…) en un clic, modifiable avant validation, enregistrable comme modèle personnel ; tout ou rien, sans doublon.
 - Supprimer un dossier remonte ses notes et sous-dossiers d'un niveau ; ranger ne modifie pas la date de modification.
 
 ### 2.3 Reporté après validation (V2.x)
@@ -120,6 +121,7 @@ IA générative, comptes et synchronisation, collaboration, application mobile, 
 12. L'envoi sur le réseau local ne sert qu'un téléchargement, expire, et ne répond pas à un mauvais jeton ; la réception refuse toute adresse hors du réseau local.
 14. Un dossier ne peut pas être déplacé dans lui-même ni dans un de ses descendants ; supprimer un dossier ne supprime ni note ni sous-dossier ; un déplacement groupé échoue en bloc ou réussit en bloc.
 15. Une note hors sujet ou trop courte ne reçoit pas de proposition fiable ; une note déjà rangée ne se « reconnaît » pas elle-même ; aucune note n'est rangée sans action de l'utilisateur.
+17. Appliquer un modèle de matière est tout ou rien et sans doublon : un dossier de même nom au même endroit est réutilisé, une structure trop grande, trop profonde ou avec un nom vide est refusée sans rien créer.
 16. Une sauvegarde, un export et un paquet partagé conservent l'arborescence des dossiers.
 13. Seuls les types passifs d'une liste blanche (documents, images, son, vidéo, archives) sont confiés à l'application par défaut du système ; tout autre fichier joint est refusé.
 

@@ -161,6 +161,20 @@ func (n *NoteCore) CreateFolder(name, parentID string) (notes.Folder, error) {
 	return n.svc.CreateFolderIn(n.callContext(), name, parentID)
 }
 
+// CreateFolderTree applique un modèle de matière : crée une structure de
+// dossiers sous parentID ("" = racine), tout ou rien ; un dossier déjà présent
+// au même endroit est réutilisé.
+func (n *NoteCore) CreateFolderTree(parentID string, tree []notes.FolderSpec) (notes.TreeResult, error) {
+	res, err := n.svc.CreateFolderTree(n.callContext(), parentID, tree)
+	if res.Created == nil {
+		res.Created = []notes.Folder{}
+	}
+	if res.RootIDs == nil {
+		res.RootIDs = []string{}
+	}
+	return res, err
+}
+
 // MoveFolder déplace un dossier (avec tout ce qu'il contient) sous un autre
 // dossier ("" = racine). Refusé s'il se retrouverait dans l'un de ses descendants.
 func (n *NoteCore) MoveFolder(id, newParentID string) error {

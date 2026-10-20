@@ -23,7 +23,7 @@
   import { snippetParts } from '../utils/format';
   import { startReview } from '../stores/review';
   import { openGuide } from '../stores/guide';
-  import { importOpen, shareDialog } from '../stores/ui';
+  import { importOpen, shareDialog, templateDialog } from '../stores/ui';
   import { goFiles } from '../stores/workspace';
 
   type Item = {
@@ -73,6 +73,7 @@
       run: () => setThemePref($theme.theme === 'dark' ? 'light' : 'dark')
     },
     { id: 'settings', kind: 'action', icon: 'settings', label: 'Ouvrir les paramètres', hint: 'Ctrl ,', run: () => settingsOpen.set(true) },
+    { id: 'template', kind: 'action', icon: 'layout', label: 'Nouvelle matière à partir d\'un modèle…', run: () => templateDialog.set({ parentId: null }) },
     { id: 'files', kind: 'action', icon: 'paperclip', label: 'Parcourir les fichiers joints', run: () => void goFiles() },
     { id: 'share', kind: 'action', icon: 'share', label: 'Partager des notes sans connexion…', run: () => shareDialog.set({ scope: $selectedNote ? 'note' : 'all', id: $selectedNote?.id ?? '' }) },
     { id: 'import', kind: 'action', icon: 'upload', label: 'Importer des notes…', run: () => importOpen.set(true) },

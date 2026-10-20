@@ -12,12 +12,14 @@ import { filesOpen } from './files';
 import { ancestorIds, buildTree, subtreeIds } from '../utils/folders';
 import type {
   Folder,
+  FolderSpec,
   FolderSuggestion,
   InboxItem,
   Note,
   NotePatch,
   RestorePreview,
   SaveState,
+  TreeResult,
   SearchHit,
   View
 } from '../api/types';
@@ -489,6 +491,33 @@ export async function deleteFolder(id: string): Promise<boolean> {
     folderError.set(folderErrorText(err));
     return false;
   }
+}
+
+/** Annonce discrète en bas de la fenêtre (résultat d'une action de l'utilisateur). */
+export function announce(text: string): void {
+  notifyTransfer('info', text);
+}
+
+/**
+ * Applique un modèle de matière : crée la structure (tout ou rien), la déplie et
+ * ouvre son premier dossier. Les dossiers déjà présents au même endroit sont
+ * réutilisés. Lève l'erreur du backend pour que la boîte la montre.
+ */
+export async function applyFolderTemplate(parentId: string | null, tree: FolderSpec[]): Promise<TreeResult> {
+  const res = await api.createFolderTree(parentId, tree);
+  const fresh = await api.listFolders();
+  folders.set(fresh ?? []);
+  if (parentId) expandFolder(parentId);
+  for (const f of res.created) expandFolder(f.id);
+  for (const id of res.rootIds) expandFolder(id);
+  if (res.rootIds[0]) currentView.set({ kind: 'folder', folderId: res.rootIds[0] });
+  const n = res.created.length;
+  announce(
+    n === 0
+      ? 'Cette structure existe déjà : rien à créer.'
+      : `${n} dossier${n > 1 ? 's' : ''} créé${n > 1 ? 's' : ''}${res.existing > 0 ? `, ${res.existing} déjà présent${res.existing > 1 ? 's' : ''}` : ''}.`
+  );
+  return res;
 }
 
 /** Déplace un dossier (et tout son contenu) sous un autre ; null = racine. */

@@ -9,7 +9,7 @@
     "build:wails": "vite build && rm -rf ../backend/frontenddist && cp -r dist ../backend/frontenddist",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node --experimental-strip-types scripts/test-markdown.ts && node --experimental-strip-types scripts/test-folders.ts"
+    "test": "node --experimental-strip-types scripts/test-markdown.ts && node --experimental-strip-types scripts/test-folders.ts && node --experimental-strip-types scripts/test-templates.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",

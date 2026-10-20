@@ -1,4 +1,6 @@
 import type {
+  FolderSpec,
+  TreeResult,
   FolderSuggestion,
   InboxItem,
   ArchiveListing,
@@ -41,6 +43,8 @@ export interface NoteCoreApi {
 
   /** Crée un dossier, à la racine ou dans `parentId` (dossiers imbriqués, ADR-009). */
   createFolder(name: string, parentId?: string | null): Promise<Folder>;
+  /** Applique un modèle de matière : crée une structure de dossiers, tout ou rien (les dossiers existants sont réutilisés). */
+  createFolderTree(parentId: string | null, tree: FolderSpec[]): Promise<TreeResult>;
   /** Déplace un dossier et tout son contenu sous un autre (null = racine). */
   moveFolder(id: string, parentId: string | null): Promise<void>;
   /** Range plusieurs notes d'un coup, tout ou rien (null = sans dossier). */

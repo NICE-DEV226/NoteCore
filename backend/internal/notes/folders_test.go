@@ -2,6 +2,7 @@ package notes_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -235,4 +236,100 @@ func mustNote(t *testing.T, svc *notes.Service, folderID string) notes.Note {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func tree(name string, children ...notes.FolderSpec) notes.FolderSpec {
+	return notes.FolderSpec{Name: name, Children: children}
+}
+
+func TestModeleDeMatiere(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	spec := tree("Réseaux", tree("Cours"), tree("TD"), tree("TP"), tree("Révisions"))
+
+	res, err := svc.CreateFolderTree(ctx, "", []notes.FolderSpec{spec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Created) != 5 || res.Existing != 0 || len(res.RootIDs) != 1 {
+		t.Fatalf("résultat = %+v", res)
+	}
+	folders, _ := svc.ListFolders(ctx)
+	children := 0
+	for _, f := range folders {
+		if f.ParentID != nil && *f.ParentID == res.RootIDs[0] {
+			children++
+		}
+	}
+	if len(folders) != 5 || children != 4 {
+		t.Errorf("structure = %d dossiers, %d enfants", len(folders), children)
+	}
+
+	// Le réappliquer complète sans dupliquer (casse ignorée), même avec un dossier de plus.
+	again, err := svc.CreateFolderTree(ctx, "", []notes.FolderSpec{tree("réseaux", tree("cours"), tree("Examens"))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.Created) != 1 || again.Existing != 2 || again.RootIDs[0] != res.RootIDs[0] {
+		t.Errorf("fusion = %+v", again)
+	}
+	if f2, _ := svc.ListFolders(ctx); len(f2) != 6 {
+		t.Errorf("6 dossiers attendus, %d", len(f2))
+	}
+
+	// Sous un parent existant.
+	sem := mkFolder(t, svc, "Semestre 3", "")
+	in, err := svc.CreateFolderTree(ctx, sem.ID, []notes.FolderSpec{tree("Algo", tree("Cours"))})
+	if err != nil || len(in.Created) != 2 {
+		t.Fatalf("sous un parent : %+v %v", in, err)
+	}
+}
+
+func TestModeleToutOuRien(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	// Un nom vide au fond de la structure annule tout.
+	bad := tree("Matière", tree("Cours"), tree("TD", tree("  ")))
+	if _, err := svc.CreateFolderTree(ctx, "", []notes.FolderSpec{bad}); err == nil {
+		t.Fatal("un nom vide doit être refusé")
+	}
+	if f, _ := svc.ListFolders(ctx); len(f) != 0 {
+		t.Errorf("rien ne doit être créé : %d dossiers", len(f))
+	}
+	if _, err := svc.CreateFolderTree(ctx, "", nil); err == nil {
+		t.Error("un modèle vide doit être refusé")
+	}
+	if _, err := svc.CreateFolderTree(ctx, "inconnu", []notes.FolderSpec{tree("X")}); err == nil {
+		t.Error("un parent inconnu doit être refusé")
+	}
+	if _, err := svc.CreateFolderTree(ctx, "", []notes.FolderSpec{tree(strings.Repeat("x", 101))}); err == nil {
+		t.Error("un nom trop long doit être refusé")
+	}
+}
+
+func TestModeleBornes(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	// Trop profond : refusé, y compris en comptant la profondeur du parent.
+	deep := tree("n8")
+	for i := 7; i >= 1; i-- {
+		deep = tree(string(rune('a'+i)), deep)
+	}
+	if _, err := svc.CreateFolderTree(ctx, "", []notes.FolderSpec{deep}); err != nil {
+		t.Fatalf("8 niveaux doivent passer : %v", err)
+	}
+	p := mkFolder(t, svc, "P", "")
+	if _, err := svc.CreateFolderTree(ctx, p.ID, []notes.FolderSpec{deep}); err == nil {
+		t.Error("8 niveaux sous un parent dépassent la profondeur maximale")
+	}
+
+	// Trop de dossiers.
+	var many []notes.FolderSpec
+	for i := 0; i < 201; i++ {
+		many = append(many, tree(fmt.Sprintf("d%d", i)))
+	}
+	if _, err := svc.CreateFolderTree(ctx, "", many); err == nil {
+		t.Error("201 dossiers doivent être refusés")
+	}
 }

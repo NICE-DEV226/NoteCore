@@ -52,6 +52,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 
 - **Glissez-déposez** une note (ou plusieurs : Ctrl/Maj+clic) sur un dossier, ou un dossier sur un autre. Sans souris : *Ranger dans…* et *Déplacer ce dossier…*.
 - **À classer** : les notes sans dossier arrivent dans une boîte, avec **une proposition de dossier** pour chacune, calculée localement d'après le vocabulaire et les étiquettes des notes déjà rangées. *Ranger* l'accepte ; *Ranger les N sûres* range d'un coup les propositions évidentes. NoteCore propose, vous décidez — rien n'est rangé tout seul.
+- **Modèles de matière** : *Nouvelle matière* crée d'un coup *Réseaux* avec *Cours*, *TD*, *TP*, *Révisions*, *Examens* (ou un projet, un semestre…). La structure est un texte indenté que vous modifiez avant de valider, avec aperçu ; vous pouvez en enregistrer vos propres modèles. Réappliquer un modèle complète la structure sans rien dupliquer.
 - Supprimer un dossier ne supprime rien : notes et sous-dossiers remontent d'un niveau.
 
 **Partage hors connexion**

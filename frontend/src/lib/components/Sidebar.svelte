@@ -33,7 +33,7 @@
     restorePreview,
     selectedNoteId
   } from '../stores/workspace';
-  import { dragging, folderPicker, paletteOpen, settingsOpen } from '../stores/ui';
+  import { dragging, folderPicker, paletteOpen, settingsOpen, templateDialog } from '../stores/ui';
   import { canDropFolder, subtreeIds, visibleNodes } from '../utils/folders';
   import { reviewStats, startReview } from '../stores/review';
   import { filesOpen } from '../stores/files';
@@ -309,6 +309,9 @@
         >
           <span class="section-title">Dossiers</span>
           {#if $dragging}<span class="drop-hint">Déposer ici : à la racine</span>{/if}
+          <button class="mini-btn" title="Nouvelle matière à partir d'un modèle (Cours, TD, TP…)" aria-label="Nouvelle matière à partir d'un modèle" onclick={() => templateDialog.set({ parentId: null })}>
+            <Icon name="layout" size={13} />
+          </button>
           <button class="mini-btn" title="Nouveau dossier" aria-label="Nouveau dossier" onclick={() => startCreateFolder(null)}>
             <Icon name="plus" size={13} stroke={2.2} />
           </button>
@@ -394,6 +397,9 @@
                     <span class="count">{node.total}</span>
                   </button>
                   <span class="row-actions">
+                    <button class="row-btn" title="Ajouter une structure (modèle) dans ce dossier" aria-label={`Ajouter une structure dans ${folder.name}`} onclick={() => templateDialog.set({ parentId: folder.id })}>
+                      <Icon name="layout" size={13} />
+                    </button>
                     <button class="row-btn" title="Nouveau sous-dossier" aria-label={`Nouveau sous-dossier dans ${folder.name}`} onclick={() => startCreateFolder(folder.id)}>
                       <Icon name="folder-plus" size={13} />
                     </button>
@@ -681,6 +687,7 @@
   .section-head {
     display: flex;
     align-items: center;
+    gap: 0.1rem;
     justify-content: space-between;
     padding: 0 0.6rem 0.3rem;
   }
@@ -738,7 +745,7 @@
   .node .nav-item {
     flex: 1;
     min-width: 0;
-    padding-right: 5.6rem;
+    padding-right: 7.4rem;
   }
   .twisty {
     display: grid;

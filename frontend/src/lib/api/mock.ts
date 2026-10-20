@@ -1,5 +1,5 @@
 import type { NoteCoreApi } from './contract';
-import type { Folder, FolderSuggestion, InboxItem, MasteryRow, Note, NotePatch, ReviewCard, SearchHit } from './types';
+import type { Folder, FolderSpec, FolderSuggestion, InboxItem, MasteryRow, Note, NotePatch, ReviewCard, SearchHit } from './types';
 
 /**
  * Implémentation en mémoire du contrat NoteCoreApi.
@@ -449,6 +449,29 @@ export const mockApi: NoteCoreApi = {
     const folder = { ...makeFolder(clean, 0), parentId: parent };
     seed.folders.push(folder);
     return { ...folder };
+  },
+
+  async createFolderTree(parentId, tree) {
+    await delay();
+    const created: Folder[] = [];
+    let existing = 0;
+    const rootIds: string[] = [];
+    const walk = (parent: string | null, nodes: FolderSpec[], top: boolean): void => {
+      for (const sp of nodes) {
+        const name = sp.name.trim();
+        let f = seed.folders.find((x) => (x.parentId ?? null) === parent && x.name.toLowerCase() === name.toLowerCase());
+        if (f) existing += 1;
+        else {
+          f = { ...makeFolder(name, 0), parentId: parent };
+          seed.folders.push(f);
+          created.push({ ...f });
+        }
+        if (top) rootIds.push(f.id);
+        walk(f.id, sp.children ?? [], false);
+      }
+    };
+    walk(parentId, tree, true);
+    return { created, existing, rootIds };
   },
 
   async moveFolder(id, parentId) {
