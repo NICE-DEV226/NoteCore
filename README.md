@@ -25,6 +25,7 @@ Notes, dossiers, tags, recherche plein texte, mise en forme complète avec aper�
 - [Tests et intégration continue](#tests-et-intégration-continue)
 - [Vos données](#vos-données)
 - [Documentation](#documentation)
+- [Contribution](#contribution)
 - [Licence](#licence)
 
 ## Fonctionnalités
@@ -306,6 +307,10 @@ Base locale SQLite, en mode WAL :
 - [`docs/revue-ergonomie.md`](docs/revue-ergonomie.md) — revue d'ergonomie et correctifs appliqués
 - [`docs/procedure-build.md`](docs/procedure-build.md) — build et développement en détail
 - [`docs/release-notes/`](docs/release-notes) — notes de version
+
+## Contribution
+
+Les contributions sont les bienvenues ! Pour savoir comment rapporter un problème, proposer une fonctionnalité ou participer au développement, consultez le guide [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
