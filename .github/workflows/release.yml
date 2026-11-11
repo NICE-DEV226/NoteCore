@@ -158,6 +158,20 @@ jobs:
       - name: Récupérer le code
         uses: actions/checkout@v7
 
+      # L'empreinte sha256 du tarball ne peut pas être correcte dans le
+      # PKGBUILD versionné : elle dépend du commit qui le contient
+      # (auto-référence). On la recalcule donc ici avant makepkg.
+      - name: Ajuster l'empreinte source du PKGBUILD
+        run: |
+          set -eu
+          ver="$(sed -n 's/^pkgver=//p' packaging/aur/PKGBUILD)"
+          curl -sL -o /tmp/notecore-src.tar.gz \
+            "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/v${ver}.tar.gz"
+          sum="$(sha256sum /tmp/notecore-src.tar.gz | cut -d' ' -f1)"
+          sed -i "s/sha256sums=('.*')/sha256sums=('${sum}')/" packaging/aur/PKGBUILD
+          sed -i "s/sha256sums = .*/\tsha256sums = ${sum}/" packaging/aur/.SRCINFO
+          grep -n "${sum}" packaging/aur/PKGBUILD packaging/aur/.SRCINFO
+
       # L'AUR ne prend plus de nouveaux paquets : le binaire est donc
       # construit ici avec makepkg dans un conteneur Arch, à partir du
       # PKGBUILD versionné (qui pointe sur l'archive du tag pkgver).
