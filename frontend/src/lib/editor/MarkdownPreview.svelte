@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { renderMarkdown } from './markdown';
+  import { renderMarkdown, renderMarkdownMath } from './markdown';
   import { api } from '../api/client';
+  import { display } from '../stores/display';
+  import type katex from 'katex';
 
   /** Contenu Markdown brut de la note. */
-  let { content = '' }: { content?: string } = $props();
+  let { content = '', onTaskToggle }: { content?: string; onTaskToggle?: (index: number) => void } = $props();
 
   // Le rendu reparse tout le document : on attend une courte pause de
   // frappe avant de relancer le moteur, pour que l'aperçu suive sans
@@ -19,9 +21,47 @@
     return () => clearTimeout(timer);
   });
 
-  const html = $derived(renderMarkdown(debounced ?? content));
+  // KaTeX n'est chargé qu'à la demande (réglage « latex ») : le moteur
+  // et ses polices ne pèsent rien tant que l'option est éteinte.
+  let katexMod = $state<typeof katex | null>(null);
+  $effect(() => {
+    if (!$display.latex || katexMod) return;
+    void Promise.all([import('katex'), import('katex/dist/katex.min.css')])
+      .then(([m]) => (katexMod = m.default ?? m))
+      .catch(() => undefined);
+  });
+
+  const html = $derived.by(() => {
+    const src = debounced ?? content;
+    if (!$display.latex || !katexMod) return renderMarkdown(src);
+    return renderMarkdownMath(src, katexMod);
+  });
 
   let container = $state<HTMLElement | null>(null);
+
+  /** Clic sur une case à cocher : on empêche la bascule native (le
+   *  contenu source est la vérité, pas le HTML rendu) et on remonte
+   *  l'index de la case au composant. */
+  function onPreviewClick(e: MouseEvent): void {
+    const t = e.target as HTMLElement;
+    const input =
+      t.closest<HTMLInputElement>('input.md-task') ??
+      t.closest('label.md-task')?.querySelector<HTMLInputElement>('input.md-task');
+    if (!input) return;
+    e.preventDefault();
+    const i = Number(input.dataset.task);
+    if (Number.isInteger(i)) onTaskToggle?.(i);
+  }
+
+  // Écoute déléguée posée une fois par montage du rendu : les cases à
+  // cocher sont recréées à chaque rendu ({@html}), un gestionnaire par
+  // élément ne survivrait pas.
+  $effect(() => {
+    const root = container;
+    if (!root) return;
+    root.addEventListener('click', onPreviewClick);
+    return () => root.removeEventListener('click', onPreviewClick);
+  });
 
   function base64ToBlob(base64: string, mime: string): Blob {
     const bin = atob(base64);
@@ -37,7 +77,9 @@
     return span;
   }
 
-  // Après chaque rendu : on résout les images de pièces jointes depuis le backend (les
+  // Après chaque rendu : on numérote les cases à cocher dans l'ordre
+  // d'apparition (l'index sert à retrouver la ligne source à basculer)
+  // et on résout les images de pièces jointes depuis le backend (les
   // octets ne sont pas dans le Markdown). Une pièce jointe n'est rendue
   // en image que si son type est bien `image/*` (ADR-006).
   $effect(() => {
@@ -47,6 +89,11 @@
 
     let live = true;
     const created: string[] = [];
+
+    root.querySelectorAll<HTMLInputElement>('input.md-task').forEach((input, i) => {
+      input.disabled = false;
+      input.dataset.task = String(i);
+    });
 
     root.querySelectorAll<HTMLImageElement>('img[data-attachment]').forEach((img) => {
       const id = img.dataset.attachment;

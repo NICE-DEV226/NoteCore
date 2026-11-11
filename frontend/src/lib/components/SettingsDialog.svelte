@@ -352,6 +352,25 @@
               >
             </div>
           </div>
+          <div class="row">
+            <span class="label">Formules LaTeX</span>
+            <div class="segmented" role="group" aria-label="Formules LaTeX dans l'aperçu">
+              <button
+                class:active={$display.latex}
+                aria-pressed={$display.latex}
+                onclick={() => setDisplayPref('latex', true)}>Activé</button
+              >
+              <button
+                class:active={!$display.latex}
+                aria-pressed={!$display.latex}
+                onclick={() => setDisplayPref('latex', false)}>Désactivé</button
+              >
+            </div>
+          </div>
+          <p class="hint">
+            Avec « Activé », les formules <code>$…$</code> et <code>$$…$$</code> de l'aperçu
+            sont rendues en notation mathématique. Le moteur se charge à la demande.
+          </p>
           <p class="hint foot">
             Réglages locaux : ils ne modifient jamais le contenu de vos notes.
             <button class="link" onclick={resetDisplay}>Rétablir les réglages d'origine</button>

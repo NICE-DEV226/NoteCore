@@ -255,3 +255,76 @@ func TestListAllAttachmentsEtArchive(t *testing.T) {
 		t.Error("un fichier qui n'est pas une archive doit être refusé")
 	}
 }
+
+// Index FTS des pièces jointes texte : un .txt devient cherchable, un
+// binaire non, et la suppression retire le contenu de l'index.
+func TestIndexFTSPiecesJointes(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+	n := addNote(t, svc, "note avec documents")
+
+	txt := []byte("le contrat de stage mentionne la rheole unique")
+	a, err := svc.AddAttachment(ctx, n.ID, notes.AttachmentUpload{
+		Filename: "contrat.txt", Mime: "text/plain",
+		DataBase64: base64.StdEncoding.EncodeToString(txt),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Un binaire de même taille n'entre pas dans l'index.
+	bin := bytes.Repeat([]byte{0xAB}, 64)
+	if _, err := svc.AddAttachment(ctx, n.ID, notes.AttachmentUpload{
+		Filename: "blob.bin", Mime: "application/octet-stream",
+		DataBase64: base64.StdEncoding.EncodeToString(bin),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := svc.SearchNotes(ctx, "rheole")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hit *notes.SearchResult
+	for i := range res {
+		if res[i].Kind == "attachment" {
+			hit = &res[i]
+		}
+	}
+	if hit == nil {
+		t.Fatalf("aucun résultat pièce jointe pour « rheole » : %+v", res)
+	}
+	if hit.NoteID != n.ID || hit.AttachmentID != a.ID || hit.AttachmentName != "contrat.txt" {
+		t.Errorf("résultat inattendu : %+v", hit)
+	}
+
+	// Suppression : le contenu sort de l'index.
+	if err := svc.DeleteAttachment(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = svc.SearchNotes(ctx, "rheole")
+	for _, r := range res {
+		if r.Kind == "attachment" {
+			t.Errorf("la pièce jointe supprimée est encore indexée : %+v", r)
+		}
+	}
+
+	// Suppression définitive de la note : même chose pour ses pièces.
+	a2, err := svc.AddAttachment(ctx, n.ID, notes.AttachmentUpload{
+		Filename: "notes.md", Mime: "text/markdown",
+		DataBase64: base64.StdEncoding.EncodeToString([]byte("motcleftrouvee")),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = a2
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNoteForever(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = svc.SearchNotes(ctx, "motcleftrouvee")
+	for _, r := range res {
+		t.Errorf("reste un résultat après suppression définitive : %+v", r)
+	}
+}

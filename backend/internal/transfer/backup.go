@@ -47,6 +47,8 @@ var tablesBackup = []string{
 var schemaAddedTables = map[int][]string{
 	2: {"attachments"},
 	3: {"cards", "review_log"},
+	6: {"note_versions"},
+	7: {"attachments_fts"},
 }
 
 // requiredTables renvoie les tables attendues pour un schéma donné.
@@ -155,6 +157,20 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
+	// Historique de versions (schéma 6) : une sauvegarde plus ancienne n'en
+	// a pas, la restauration se fait alors sans lui.
+	hasVersions, err := attachedTableExists(db, "restore_source", "note_versions")
+	if err != nil {
+		return err
+	}
+	// Index FTS des pièces jointes (schéma 7) : table dérivée, copiée
+	// telle quelle ; une sauvegarde plus ancienne n'en a pas et le
+	// démarrage la reconstruit (IndexAttachmentTexts).
+	hasAttFTS, err := attachedTableExists(db, "restore_source", "attachments_fts")
+	if err != nil {
+		return err
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("début de la restauration : %w", err)
@@ -170,6 +186,8 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	statements := []string{
 		`DELETE FROM review_log`,
 		`DELETE FROM cards`,
+		`DELETE FROM note_versions`,
+		`DELETE FROM attachments_fts`,
 		`DELETE FROM note_tags`,
 		`DELETE FROM tags`,
 		`DELETE FROM notes_fts`,
@@ -223,6 +241,18 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 					SELECT id, card_id, rating, reviewed_at, state, before FROM restore_source.review_log`,
 			)
 		}
+	}
+	if hasAttFTS {
+		statements = append(statements,
+			`INSERT INTO attachments_fts(filename, content, note_id, attachment_id)
+				SELECT filename, content, note_id, attachment_id FROM restore_source.attachments_fts`,
+		)
+	}
+	if hasVersions {
+		statements = append(statements,
+			`INSERT INTO note_versions(id, note_id, title, content, created_at)
+				SELECT id, note_id, title, content, created_at FROM restore_source.note_versions`,
+		)
 	}
 	statements = append(statements,
 		`INSERT INTO tags(id, name) SELECT id, name FROM restore_source.tags`,

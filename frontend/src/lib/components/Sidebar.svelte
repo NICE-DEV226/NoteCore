@@ -7,10 +7,12 @@
    */
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import NoteTemplates from './NoteTemplates.svelte';
   import Brand from './Brand.svelte';
   import { tagTint } from '../utils/tags';
   import {
     allTags,
+    createDailyNote,
     createFolder,
     createNote,
     expandedFolders,
@@ -51,6 +53,7 @@
   let folderPendingDelete = $state<string | null>(null);
   let editingFolderId = $state<string | null>(null);
   let folderEditName = $state('');
+  let noteTemplatesOpen = $state(false);
 
   let folderInput = $state<HTMLInputElement | null>(null);
   let folderRenameInput = $state<HTMLInputElement | null>(null);
@@ -228,6 +231,23 @@
         Nouvelle note
       </button>
 
+      <button
+        class="new-note daily"
+        title="Ouvrir (ou créer) la note du jour"
+        onclick={() => void createDailyNote()}
+      >
+        <Icon name="clock" size={15} />
+        Aujourd'hui
+      </button>
+
+      <button
+        class="new-note daily"
+        title="Créer une note à partir d'un modèle (compte rendu, TP, séance…)"
+        onclick={() => (noteTemplatesOpen = true)}
+      >
+        <Icon name="layout" size={15} />
+        Modèles
+      </button>
       <button
         class="finder"
         title="Rechercher et exécuter des commandes"
@@ -515,6 +535,10 @@
       </button>
     </div>
   {/if}
+{#if noteTemplatesOpen}
+  <NoteTemplates onclose={() => (noteTemplatesOpen = false)} />
+{/if}
+
 </aside>
 
 {#if folderPendingDelete}
@@ -587,6 +611,20 @@
     transform: translateY(1px);
   }
 
+  /* « Aujourd'hui » : même emplacement, poids secondaire — la note du
+     jour est un raccourci, pas l'action principale. */
+  .new-note.daily {
+    height: 32px;
+    margin-top: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 550;
+    box-shadow: none;
+  }
+  .new-note.daily:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
 
   .finder {
     display: flex;

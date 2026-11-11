@@ -29,6 +29,20 @@ export interface Note {
   deletedAt?: string;
 }
 
+/** Version enregistrée d'une note (métadonnées, sans le contenu). */
+export interface NoteVersionInfo {
+  id: string;
+  title: string;
+  createdAt: string;
+  /** Longueur du contenu en caractères. */
+  chars: number;
+}
+
+/** Version complète, pour prévisualisation ou restauration. */
+export interface NoteVersion extends NoteVersionInfo {
+  content: string;
+}
+
 /** Résultat de recherche renvoyé par le backend (ADR-003 : extraits
  * déjà structurés côté Go, requête côte front bornée). */
 export interface SearchHit {
@@ -37,6 +51,10 @@ export interface SearchHit {
   /** Extrait pertinent construit par le backend (snippet FTS, ADR-003). */
   excerpt: string;
   updatedAt?: string;
+  /** "attachment" : le résultat vient d'une pièce jointe texte indexée. */
+  kind?: string;
+  attachmentId?: string;
+  attachmentName?: string;
 }
 
 export interface Folder {

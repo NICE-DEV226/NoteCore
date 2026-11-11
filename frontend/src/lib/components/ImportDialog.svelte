@@ -53,6 +53,7 @@
   }
 
   const pickFile = () => handle(() => api.importFromFile());
+  const pickFolder = () => handle(() => api.importMarkdownFolder());
   const receive = () => handle(() => api.importFromUrl(url));
   const unlock = () => handle(() => api.importPending(pendingId, passphrase));
 
@@ -124,6 +125,10 @@
           <button class="action" disabled={busy} onclick={() => void pickFile()}>
             <Icon name="upload" size={17} />
             <span><strong>Choisir un fichier…</strong><small>Les en-têtes YAML (titre, étiquettes) sont reconnus</small></span>
+          </button>
+          <button class="action" disabled={busy} onclick={() => void pickFolder()}>
+            <Icon name="folder" size={17} />
+            <span><strong>Choisir un dossier…</strong><small>Chaque .md devient une note ; les sous-dossiers deviennent vos dossiers (vault Obsidian, export Joplin…)</small></span>
           </button>
         {:else}
           <p class="lead">Sur l'appareil qui envoie, lancez <strong>Partager → Envoyer sur le réseau local</strong>, puis collez ici l'adresse affichée. Les deux appareils doivent être sur le même réseau ; Internet n'est pas nécessaire.</p>
