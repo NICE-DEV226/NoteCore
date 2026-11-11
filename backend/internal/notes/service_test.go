@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/storage"
@@ -588,4 +589,153 @@ func TestPurgeCorbeilleParAnciennete(t *testing.T) {
 	}
 }
 
+// Opérateurs de recherche : tag:, dossier:, favori — seuls ou combinés
+// au texte libre.
+func TestRechercheOperateurs(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	dossier, err := svc.CreateFolder(ctx, "Cours")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := svc.CreateNote(ctx, "réseaux", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, a.ID, notes.Patch{Tags: ptr([]string{"Important"}), FolderID: &dossier.ID}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.CreateNote(ctx, "algo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, b.ID, notes.Patch{Tags: ptr([]string{"important"}), IsPinned: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+
+	// tag: seul, insensible à la casse, correspondance exacte.
+	res, err := svc.SearchNotes(ctx, "tag:important")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("tag:important = %d résultat(s), attendu 2", len(res))
+	}
+	res, _ = svc.SearchNotes(ctx, "tag:import")
+	if len(res) != 0 {
+		t.Errorf("tag:import (sous-chaîne) a renvoyé %d résultat(s)", len(res))
+	}
+
+	// dossier: par nom, insensible à la casse.
+	res, _ = svc.SearchNotes(ctx, "dossier:cours")
+	if len(res) != 1 || res[0].NoteID != a.ID {
+		t.Errorf("dossier:cours = %+v", res)
+	}
+	res, _ = svc.SearchNotes(ctx, "folder:cours")
+	if len(res) != 1 {
+		t.Errorf("folder:cours = %d résultat(s)", len(res))
+	}
+
+	// favori : épinglage seul.
+	res, _ = svc.SearchNotes(ctx, "favori")
+	if len(res) != 1 || res[0].NoteID != b.ID {
+		t.Errorf("favori = %+v", res)
+	}
+
+	// Combinaisons : dossier ET tag → seulement a ; tag ET favori → seulement b.
+	res, _ = svc.SearchNotes(ctx, "dossier:cours tag:important")
+	if len(res) != 1 || res[0].NoteID != a.ID {
+		t.Errorf("dossier+tag = %+v", res)
+	}
+	res, _ = svc.SearchNotes(ctx, "tag:important favori")
+	if len(res) != 1 || res[0].NoteID != b.ID {
+		t.Errorf("tag+favori = %+v", res)
+	}
+	// Texte + favori : b ne contient pas « réseau », a n'est pas épinglée.
+	res, _ = svc.SearchNotes(ctx, "favori réseau")
+	if len(res) != 0 {
+		t.Errorf("favori+texte incompatible = %+v", res)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }
+
+// Historique de versions : chaque état distinct sauvegardé est conservé,
+// la liste ne duplique pas les sauvegardes identiques, et la restauration
+// est réversible (l'état remplacé redevient une version).
+func TestHistoriqueVersions(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	n, err := svc.CreateNote(ctx, "note versionnée", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1 := "première version du texte"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v1}); err != nil {
+		t.Fatal(err)
+	}
+	// Sauvegarde identique : pas de doublon.
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v1}); err != nil {
+		t.Fatal(err)
+	}
+	v2 := "deuxième version, plus longue"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v2}); err != nil {
+		t.Fatal(err)
+	}
+
+	versions, err := svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// v1 et v2 ont été enregistrés ; la sauvegarde répétée de v1 non.
+	if len(versions) != 2 {
+		t.Fatalf("%d versions au lieu de 2 : %+v", len(versions), versions)
+	}
+	if versions[0].Chars != utf8.RuneCountInString(v2) {
+		t.Errorf("la version la plus récente devrait être v2 (%d car.)", utf8.RuneCountInString(v2))
+	}
+
+	// Restauration de v1 : le contenu revient, et l'état courant (v2)
+	// reste disponible dans l'historique.
+	oldest := versions[1]
+	restored, err := svc.RestoreVersion(ctx, n.ID, oldest.ID)
+	if err != nil {
+		t.Fatalf("restauration : %v", err)
+	}
+	if restored.Content != v1 {
+		t.Errorf("contenu restauré = %q, attendu %q", restored.Content, v1)
+	}
+	after, err := svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 3 {
+		t.Errorf("%d versions après restauration, 3 attendues (réversible)", len(after))
+	}
+
+	// Une version ne peut pas être restaurée dans une autre note.
+	other, err := svc.CreateNote(ctx, "autre note", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RestoreVersion(ctx, other.ID, oldest.ID); err == nil {
+		t.Error("une version a été restaurée dans une note qui n'est pas la sienne")
+	}
+
+	// La suppression définitive emporte l'historique (via la corbeille).
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNoteForever(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	versions, err = svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 0 {
+		t.Errorf("%d versions survivent à la suppression définitive", len(versions))
+	}
+}

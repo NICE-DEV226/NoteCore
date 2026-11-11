@@ -210,6 +210,20 @@ CREATE INDEX IF NOT EXISTS idx_notes_deleted_at ON notes(deleted_at) WHERE delet
 -- l'index composite rend la recherche du premier passage immédiate.
 CREATE INDEX IF NOT EXISTS idx_review_log_card_at ON review_log(card_id, reviewed_at);
 `},
+	{version: 6, sql: `
+-- Historique de versions par note : chaque état distinct sauvegardé est
+-- conservé (plafonné par note dans le service), pour restaurer un état
+-- antérieur sans rien perdre — la restauration elle-même crée une
+-- version, l'état courant reste donc toujours récupérable.
+CREATE TABLE IF NOT EXISTS note_versions (
+	id         TEXT PRIMARY KEY,
+	note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+	title      TEXT NOT NULL DEFAULT '',
+	content    TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, created_at);
+`},
 }
 
 // SchemaVersion renvoie la version de schéma courante — information

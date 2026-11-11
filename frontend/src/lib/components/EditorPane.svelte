@@ -8,6 +8,7 @@
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import VersionHistory from './VersionHistory.svelte';
   import Home from './Home.svelte';
   import Files from './Files.svelte';
   import Trash from './Trash.svelte';
@@ -25,6 +26,7 @@
     readFileAsBase64,
     selectedLines,
     stripAttachmentRefs,
+    toggleNthTask
   } from '../utils/editorText';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
@@ -40,6 +42,7 @@
     deleteNote,
     exportSelectedNote,
     flushSave,
+    reloadData,
     retrySave,
     saveState,
     selectedNote,
@@ -53,6 +56,7 @@
   const mode = $derived($editorMode);
   let contentEl = $state<HTMLTextAreaElement | null>(null);
   let pendingDelete = $state(false);
+  let versionsOpen = $state(false);
 
   const note = $derived($selectedNote);
 
@@ -313,6 +317,14 @@
     return top && top.confidence !== 'low' ? top : null;
   });
 
+  /** Bascule une case à cocher depuis l'aperçu : le Markdown source est
+   *  modifié (la case redevient `[ ]` ou `[x]`) et autosauvegardé. */
+  function toggleTask(index: number): void {
+    if (!note) return;
+    const next = toggleNthTask(note.content, index);
+    if (next !== null) applyContent(next);
+  }
+
   const wordCount = $derived(note ? countWords(note.content) : 0);
   const readingMinutes = $derived(Math.max(1, Math.round(wordCount / 220)));
 
@@ -514,6 +526,14 @@
           onclick={() => focusMode.update((v) => !v)}
         >
           <Icon name="focus" size={16} />
+        </button>
+        <button
+          class="icon-btn"
+          title="Historique des versions — chaque état enregistré peut être restauré"
+          aria-label="Historique des versions"
+          onclick={() => (versionsOpen = true)}
+        >
+          <Icon name="clock" size={16} />
         </button>
         <button
           class="icon-btn"
@@ -740,7 +760,7 @@
         {#if mode !== 'edit'}
           <div class="pane read">
             <div class="preview-holder">
-              <MarkdownPreview content={note.content} />
+              <MarkdownPreview content={note.content} onTaskToggle={toggleTask} />
             </div>
           </div>
         {/if}
@@ -777,6 +797,14 @@
     confirmLabel="Mettre à la corbeille"
     onconfirm={() => void onDelete()}
     oncancel={() => (pendingDelete = false)}
+  />
+{/if}
+
+{#if versionsOpen && note}
+  <VersionHistory
+    noteId={note.id}
+    onclose={() => (versionsOpen = false)}
+    onrestored={() => void reloadData()}
   />
 {/if}
 

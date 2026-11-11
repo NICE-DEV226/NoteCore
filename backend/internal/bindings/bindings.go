@@ -190,6 +190,39 @@ func (n *NoteCore) PurgeTrash(ctx context.Context) (int, error) {
 	return n.svc.PurgeTrash(ctx, 30*24*time.Hour)
 }
 
+// --- historique de versions ------------------------------------------------
+
+// ListNoteVersions renvoie l'historique des états sauvegardés d'une note,
+// le plus récent d'abord (métadonnées seules).
+func (n *NoteCore) ListNoteVersions(noteID string) ([]notes.VersionInfo, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note non identifiée")
+	}
+	out, err := n.svc.ListVersions(n.callContext(), noteID)
+	if out == nil {
+		out = []notes.VersionInfo{}
+	}
+	return out, err
+}
+
+// GetNoteVersion renvoie le contenu complet d'une version, pour
+// prévisualisation ou restauration.
+func (n *NoteCore) GetNoteVersion(versionID string) (notes.Version, error) {
+	if versionID == "" {
+		return notes.Version{}, fmt.Errorf("version non identifiée")
+	}
+	return n.svc.GetVersion(n.callContext(), versionID)
+}
+
+// RestoreNoteVersion rétablit une version : réversible, l'état courant
+// devient lui-même une version.
+func (n *NoteCore) RestoreNoteVersion(noteID, versionID string) (notes.Note, error) {
+	if noteID == "" || versionID == "" {
+		return notes.Note{}, fmt.Errorf("note ou version non identifiée")
+	}
+	return n.svc.RestoreVersion(n.callContext(), noteID, versionID)
+}
+
 func (n *NoteCore) SearchNotes(query string) ([]notes.SearchResult, error) {
 	return n.svc.SearchNotes(n.callContext(), query)
 }
