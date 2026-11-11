@@ -16,12 +16,15 @@ import (
 // manuel). Jamais bloquant — hors ligne ou API injoignable, l'appel
 // échoue et l'interface reste silencieuse. NoteCore ne télécharge ni
 // n'installe rien : elle propose seulement le lien de la version.
-//
-// appVersion doit suivre info.productVersion de wails.json.
-const (
-	appVersion = "0.4.0"
-	updateAPI  = "https://api.github.com/repos/NICE-DEV226/NoteCore/releases/latest"
-)
+const updateAPI = "https://api.github.com/repos/NICE-DEV226/NoteCore/releases/latest"
+
+// appVersion est fixée au démarrage depuis info.productVersion de
+// wails.json (main.go) : la version comparée suit toujours le binaire,
+// jamais une constante à maintenir à la main.
+var appVersion string
+
+// SetAppVersion enregistre la version de l'application en cours.
+func SetAppVersion(v string) { appVersion = v }
 
 // UpdateInfo décrit ce que l'interface affiche.
 type UpdateInfo struct {
@@ -37,6 +40,11 @@ type UpdateInfo struct {
 // API muette) : l'appelant n'a rien à signaler.
 func (n *NoteCore) CheckForUpdate() (UpdateInfo, error) {
 	info := UpdateInfo{Current: appVersion}
+	if appVersion == "" {
+		// Version inconnue (bindings utilisés hors wails.Run) : on ne
+		// prétend pas savoir s'il y a une mise à jour.
+		return info, nil
+	}
 
 	ctx, cancel := context.WithTimeout(n.callContext(), 6*time.Second)
 	defer cancel()

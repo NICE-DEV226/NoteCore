@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -26,6 +27,24 @@ var dist embed.FS
 
 //go:embed assets/notecore.png
 var appIcon []byte
+
+//go:embed wails.json
+var wailsJSON []byte
+
+// appProductVersion lit info.productVersion de wails.json : la version
+// réellement embarquée dans le binaire, pour le vérificateur de mise à
+// jour — jamais une constante dupliquée.
+func appProductVersion() string {
+	var cfg struct {
+		Info struct {
+			ProductVersion string `json:"productVersion"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(wailsJSON, &cfg); err != nil {
+		return ""
+	}
+	return cfg.Info.ProductVersion
+}
 
 // userDataDirectory place la base dans le répertoire de données de
 // l'utilisateur — jamais dans le répertoire d'installation
@@ -67,6 +86,7 @@ func run() error {
 	}
 
 	service := notes.New(db)
+	bindings.SetAppVersion(appProductVersion())
 	api := bindings.New(service, db)
 	api.SetStartupReport(report.SafetyCopy)
 	api.SetDataDir(dir)
