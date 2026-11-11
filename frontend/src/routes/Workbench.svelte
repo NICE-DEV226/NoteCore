@@ -30,6 +30,7 @@
   import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
   import { splitOpen } from '../lib/stores/workspace';
   import { updateDismissed, updateInfo, checkForUpdate } from '../lib/stores/update';
+  import { listCollapsed, sidebarCollapsed } from '../lib/stores/ui';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
@@ -71,13 +72,23 @@
         event.preventDefault();
         void flushSave();
         break;
+      case 'b':
+        // Convention éditeur : Ctrl+B replie/déplie la barre latérale.
+        event.preventDefault();
+        sidebarCollapsed.update((v) => !v);
+        break;
     }
   }
 </script>
 
 <svelte:window onkeydown={handleShortcut} />
 
-<main class="workbench" class:focus={$focusMode}>
+<main
+  class="workbench"
+  class:focus={$focusMode}
+  class:side-collapsed={$sidebarCollapsed}
+  class:list-collapsed={$listCollapsed}
+>
   <Sidebar />
   <NoteList />
   <div class="editor-zone" class:split={$splitOpen && !$focusMode}>
@@ -173,6 +184,19 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
+  /* Panneaux repliés : chaque colonne garde un rail de 46px avec les
+     actions essentielles, au lieu de disparaître — l'éditeur gagne
+     l'espace sans perdre l'accès aux fonctions. */
+  .workbench.side-collapsed {
+    grid-template-columns: 46px minmax(260px, 330px) 1fr;
+  }
+  .workbench.list-collapsed {
+    grid-template-columns: 248px 46px 1fr;
+  }
+  .workbench.side-collapsed.list-collapsed {
+    grid-template-columns: 46px 46px 1fr;
+  }
+
   /* Concentration : seule la zone d'écriture reste visible. */
   .workbench.focus {
     grid-template-columns: 1fr;
@@ -213,6 +237,15 @@
   @media (max-width: 900px) {
     .workbench {
       grid-template-columns: 200px minmax(200px, 250px) 1fr;
+    }
+    .workbench.side-collapsed {
+      grid-template-columns: 46px minmax(200px, 250px) 1fr;
+    }
+    .workbench.list-collapsed {
+      grid-template-columns: 200px 46px 1fr;
+    }
+    .workbench.side-collapsed.list-collapsed {
+      grid-template-columns: 46px 46px 1fr;
     }
   }
 

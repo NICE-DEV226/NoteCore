@@ -7,7 +7,7 @@
   import Icon from './Icon.svelte';
   import EmptyState from './EmptyState.svelte';
   import { derived, get } from 'svelte/store';
-  import { dragging, folderPicker } from '../stores/ui';
+  import { dragging, folderPicker, listCollapsed } from '../stores/ui';
   import { folderPath, pathLabel } from '../utils/folders';
   import type { Note } from '../api/types';
   import { excerpt, formatRelative, snippetParts } from '../utils/format';
@@ -211,11 +211,47 @@
 </script>
 
 <section class="note-list">
+  {#if $listCollapsed}
+    <!-- Rail : accès rapide à la création et à la recherche ; le chevron
+         ou la liste des notes (clic sur une note) réaffiche le panneau. -->
+    <div class="rail">
+      <button
+        class="rail-btn"
+        title="Déplier la liste — icône liste dans l'éditeur"
+        aria-label="Déplier la liste des notes"
+        onclick={() => listCollapsed.set(false)}
+      >
+        <Icon name="chevron-right" size={16} />
+      </button>
+      <button class="rail-btn" title="Nouvelle note — Ctrl+N" aria-label="Nouvelle note" onclick={createNoteHere}>
+        <Icon name="plus" size={16} stroke={2.2} />
+      </button>
+      <button
+        class="rail-btn"
+        title="Rechercher dans la liste"
+        aria-label="Rechercher dans la liste"
+        onclick={() => {
+          listCollapsed.set(false);
+          setTimeout(() => document.getElementById(SEARCH_INPUT_ID)?.focus(), 50);
+        }}
+      >
+        <Icon name="search" size={16} />
+      </button>
+    </div>
+  {:else}
   <header class="list-head">
     <h2>{$viewTitle}</h2>
     <span class="list-count">{$filteredNotes.length}</span>
     <button class="add" title="Nouvelle note — Ctrl+N" aria-label="Nouvelle note" onclick={createNoteHere}>
       <Icon name="plus" size={15} stroke={2.2} />
+    </button>
+    <button
+      class="collapse"
+      title="Replier la liste des notes"
+      aria-label="Replier la liste des notes"
+      onclick={() => listCollapsed.set(true)}
+    >
+      <Icon name="chevron-left" size={15} />
     </button>
   </header>
 
@@ -372,6 +408,7 @@
       {/each}
     {/if}
   </div>
+  {/if}
 </section>
 
 <style>
@@ -768,5 +805,48 @@
   }
   .pin.pinned {
     color: var(--warning);
+  }
+
+  /* Rail replié : mêmes actions essentielles que la sidebar. */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.7rem 0.3rem;
+    flex: 1;
+    min-height: 0;
+  }
+  .rail-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-soft);
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .rail-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .collapse {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    padding: 0.3rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .collapse:hover {
+    background: var(--hover);
+    color: var(--text);
   }
 </style>

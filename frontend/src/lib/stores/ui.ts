@@ -37,8 +37,32 @@ export const paletteOpen = writable(false);
 /** Fenêtre des paramètres (Ctrl/Cmd+,). */
 export const settingsOpen = writable(false);
 
+function persistedBool(key: string): ReturnType<typeof writable<boolean>> {
+  let initial = true;
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === '0') initial = false;
+    else if (stored === '1') initial = true;
+  } catch {
+    /* stockage indisponible : défaut */
+  }
+  const store = writable(initial);
+  store.subscribe((v) => {
+    try {
+      localStorage.setItem(key, v ? '1' : '0');
+    } catch {
+      /* sans conséquence */
+    }
+  });
+  return store;
+}
+
 /** Mode concentration : seule la zone d'écriture reste visible. */
 export const focusMode = writable(false);
+
+/** Panneaux latéraux repliés en rail d'icônes (persisté comme le mode). */
+export const sidebarCollapsed = persistedBool('notecore.sidebarCollapsed');
+export const listCollapsed = persistedBool('notecore.listCollapsed');
 
 /** Boîte de partage : ce qu'elle propose de partager (note ouverte, dossier, tout). */
 export const shareDialog = writable<{ scope: 'note' | 'folder' | 'all'; id: string } | null>(null);
