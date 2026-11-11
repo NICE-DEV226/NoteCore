@@ -66,3 +66,31 @@ export function attachmentSize(bytes: number): string {
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} Kio`;
   return `${bytes} o`;
 }
+
+// --- cases à cocher cliquables dans l'aperçu -------------------------------
+
+/** Reconnaît la même syntaxe que le moteur Markdown : item de liste
+ *  dont le texte commence par `[ ]`, `[x]` ou `[X]`. */
+const TASK_LINE_RE = /^(\s*)([-*+]|\d+[.)])\s+\[([ xX])\]\s+/;
+
+/**
+ * Bascule la n-ième case à cocher du document (ordre d'apparition, comme
+ * les `data-task` attribués par l'aperçu). Renvoie le contenu modifié,
+ * ou null si l'index est hors limites — l'appelant ne touche alors à
+ * rien plutôt que de deviner.
+ */
+export function toggleNthTask(content: string, index: number): string | null {
+  if (index < 0) return null;
+  const lines = content.split('\n');
+  let seen = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(TASK_LINE_RE);
+    if (!m) continue;
+    seen++;
+    if (seen !== index) continue;
+    const mark = m[3].toLowerCase() === 'x' ? ' ' : 'x';
+    lines[i] = lines[i].replace(TASK_LINE_RE, `$1$2 [${mark}] `);
+    return lines.join('\n');
+  }
+  return null;
+}
