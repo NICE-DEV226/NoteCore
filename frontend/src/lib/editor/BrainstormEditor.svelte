@@ -10,6 +10,7 @@
    * flèches = naviguer · case [ ]/[x] cliquable · chevron = replier.
    */
   import Icon from '../components/Icon.svelte';
+  import { checkboxState, parseOutline, serializeOutline, taskText, type OutlineNode as Node } from './outline';
 
   let {
     content,
@@ -17,35 +18,13 @@
     spellcheck = true
   }: { content: string; onChange: (text: string) => void; spellcheck?: boolean } = $props();
 
-  interface Node {
-    id: number;
-    depth: number;
-    text: string;
-  }
-
   let nextId = 1;
-
-  function parse(text: string): Node[] {
-    const out: Node[] = [];
-    for (const line of text.split('\n')) {
-      if (!line.trim()) continue;
-      const m = /^(\s*)(?:[-*+]\s+)?(.*)$/.exec(line);
-      if (!m) continue;
-      const indent = m[1].replace(/\t/g, '  ').length;
-      out.push({ id: nextId++, depth: Math.floor(indent / 2), text: m[2].trimEnd() });
-    }
-    if (out.length === 0) out.push({ id: nextId++, depth: 0, text: '' });
-    return out;
-  }
-
-  function serialize(nodes: Node[]): string {
-    return nodes.map((n) => `${'  '.repeat(n.depth)}- ${n.text}`).join('\n');
-  }
+  const nid = () => nextId++;
 
   // Le composant est remonté par note ({#key}) : le contenu initial est
   // capturé une fois, les frappes suivantes passent par onChange.
   function initialNodes(): Node[] {
-    return parse(content);
+    return parseOutline(content, nid);
   }
   let nodes = $state(initialNodes());
   /** Ids des nœuds dont les enfants sont repliés. */
@@ -55,7 +34,7 @@
   let inputs = $state<HTMLInputElement[]>([]);
 
   function emit(): void {
-    onChange(serialize(nodes));
+    onChange(serializeOutline(nodes));
   }
 
   function hasChildren(index: number): boolean {
@@ -211,18 +190,11 @@
     emit();
   }
 
-  /** Case à cocher en tête de puce : « [ ] » / « [x] ». */
-  function checkboxState(text: string): 'none' | 'todo' | 'done' {
-    if (/^\[ \]\s*/.test(text)) return 'todo';
-    if (/^\[[xX]\]\s*/.test(text)) return 'done';
-    return 'none';
-  }
-
   function toggleTask(index: number): void {
     const n = nodes[index];
     const state = checkboxState(n.text);
-    if (state === 'todo') n.text = n.text.replace(/^\[ \]\s*/, '[x] ');
-    else if (state === 'done') n.text = n.text.replace(/^\[[xX]\]\s*/, '[ ] ');
+    if (state === 'todo') n.text = `[x] ${taskText(n.text)}`;
+    else if (state === 'done') n.text = `[ ] ${taskText(n.text)}`;
     else n.text = `[ ] ${n.text}`;
     emit();
   }
@@ -354,7 +326,7 @@
         class="item"
         class:task-text={state !== 'none'}
         class:done={state === 'done'}
-        value={n.text.replace(state === 'todo' ? /^\[ \]\s*/ : state === 'done' ? /^\[[xX]\]\s*/ : /^/, '')}
+        value={taskText(n.text)}
         placeholder={index === 0 && n.text === '' ? 'Idée principale…' : ''}
         spellcheck={spellcheck}
         autocomplete="off"
