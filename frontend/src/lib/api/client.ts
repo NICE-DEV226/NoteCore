@@ -258,6 +258,20 @@ class WailsAdapter implements NoteCoreApi {
     await this.svc.SetSetting(key, value);
   }
 
+  // --- export Markdown unidirectionnel ---
+
+  async markdownExportDir(): Promise<string> {
+    return ((await this.svc.MarkdownExportDir()) as string | null) ?? '';
+  }
+
+  async chooseMarkdownExportDir(): Promise<string> {
+    return ((await this.svc.ChooseMarkdownExportDir()) as string | null) ?? '';
+  }
+
+  async setMarkdownExportDir(dir: string): Promise<void> {
+    await this.svc.SetMarkdownExportDir(dir);
+  }
+
   // --- pièces jointes (ADR-006) ---
 
   async addAttachment(

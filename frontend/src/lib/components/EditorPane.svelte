@@ -31,7 +31,7 @@
   } from '../utils/editorText';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
-  import { acceptSuggestion, folderTree, inboxSuggestions } from '../stores/workspace';
+  import { acceptSuggestion, folderTree, inboxSuggestions, notes, splitNoteId, splitOpen } from '../stores/workspace';
   import { pathLabel, visibleNodes } from '../utils/folders';
   import { startReview } from '../stores/review';
   import { nextClozeNumber } from '../utils/cards';
@@ -265,6 +265,18 @@
   function setMode(next: EditorMode): void {
     editorMode.set(next);
     if (next === 'preview') void flushSave();
+  }
+
+  /** Volet secondaire : une autre note en lecture à côté de l'éditeur. */
+  function toggleSplit(): void {
+    if ($splitOpen) {
+      splitNoteId.set(null);
+      return;
+    }
+    // Pré-sélection : une autre note si possible — la même des deux
+    // côtés n'apprend rien.
+    const other = $notes.find((n) => n.id !== note?.id) ?? note;
+    if (other) splitNoteId.set(other.id);
   }
 
   // --- cartes de révision (ADR-007) ---
@@ -545,6 +557,16 @@
           onclick={() => (linksOpen = true)}
         >
           <Icon name="link" size={16} />
+        </button>
+        <button
+          class="icon-btn"
+          class:on={$splitOpen}
+          aria-pressed={$splitOpen}
+          title="Volet secondaire — afficher une autre note à côté, en lecture"
+          aria-label="Afficher un second volet"
+          onclick={toggleSplit}
+        >
+          <Icon name="columns" size={16} />
         </button>
         <button
           class="icon-btn"
