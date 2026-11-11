@@ -28,7 +28,7 @@
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
   import { api } from '../lib/api/client';
   import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
-  import { splitOpen } from '../lib/stores/workspace';
+  import { splitNoteId, splitOpen } from '../lib/stores/workspace';
   import { updateDismissed, updateInfo, checkForUpdate } from '../lib/stores/update';
   import { listCollapsed, sidebarCollapsed } from '../lib/stores/ui';
 
@@ -47,6 +47,14 @@
   });
 
   function handleShortcut(event: KeyboardEvent): void {
+    // Échap referme le volet secondaire — le réflexe « annuler le scindage ».
+    // Une boîte modale ouverte garde la priorité (ses propres Échap).
+    if (event.key === 'Escape' && $splitOpen && !$focusMode) {
+      if (!document.querySelector('[aria-modal="true"], dialog[open]')) {
+        splitNoteId.set(null);
+      }
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
     // Une boîte modale ouverte capture l'attention : on lui laisse la main
     // (la palette referme elle-même sur Ctrl+K).
