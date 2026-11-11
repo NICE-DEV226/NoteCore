@@ -588,4 +588,74 @@ func TestPurgeCorbeilleParAnciennete(t *testing.T) {
 	}
 }
 
+// Opérateurs de recherche : tag:, dossier:, favori — seuls ou combinés
+// au texte libre.
+func TestRechercheOperateurs(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	dossier, err := svc.CreateFolder(ctx, "Cours")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := svc.CreateNote(ctx, "réseaux", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, a.ID, notes.Patch{Tags: ptr([]string{"Important"}), FolderID: &dossier.ID}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.CreateNote(ctx, "algo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, b.ID, notes.Patch{Tags: ptr([]string{"important"}), IsPinned: ptr(true)}); err != nil {
+		t.Fatal(err)
+	}
+
+	// tag: seul, insensible à la casse, correspondance exacte.
+	res, err := svc.SearchNotes(ctx, "tag:important")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("tag:important = %d résultat(s), attendu 2", len(res))
+	}
+	res, _ = svc.SearchNotes(ctx, "tag:import")
+	if len(res) != 0 {
+		t.Errorf("tag:import (sous-chaîne) a renvoyé %d résultat(s)", len(res))
+	}
+
+	// dossier: par nom, insensible à la casse.
+	res, _ = svc.SearchNotes(ctx, "dossier:cours")
+	if len(res) != 1 || res[0].NoteID != a.ID {
+		t.Errorf("dossier:cours = %+v", res)
+	}
+	res, _ = svc.SearchNotes(ctx, "folder:cours")
+	if len(res) != 1 {
+		t.Errorf("folder:cours = %d résultat(s)", len(res))
+	}
+
+	// favori : épinglage seul.
+	res, _ = svc.SearchNotes(ctx, "favori")
+	if len(res) != 1 || res[0].NoteID != b.ID {
+		t.Errorf("favori = %+v", res)
+	}
+
+	// Combinaisons : dossier ET tag → seulement a ; tag ET favori → seulement b.
+	res, _ = svc.SearchNotes(ctx, "dossier:cours tag:important")
+	if len(res) != 1 || res[0].NoteID != a.ID {
+		t.Errorf("dossier+tag = %+v", res)
+	}
+	res, _ = svc.SearchNotes(ctx, "tag:important favori")
+	if len(res) != 1 || res[0].NoteID != b.ID {
+		t.Errorf("tag+favori = %+v", res)
+	}
+	// Texte + favori : b ne contient pas « réseau », a n'est pas épinglée.
+	res, _ = svc.SearchNotes(ctx, "favori réseau")
+	if len(res) != 0 {
+		t.Errorf("favori+texte incompatible = %+v", res)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

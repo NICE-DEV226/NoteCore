@@ -396,13 +396,45 @@ export async function createNote(folderId: string | null = null): Promise<void> 
   await flushSave();
   try {
     const note = await api.createNote({ folderId });
-    notes.update((list) => [...list, note]);
-    currentView.set({ kind: 'all' });
-    searchQuery.set('');
-    filesOpen.set(false);
-    trashOpen.set(false);
-    selectedNoteId.set(note.id);
-    saveState.set('saved');
+    adoptNewNote(note);
+  } catch {
+    saveState.set('error');
+  }
+}
+
+/** Une note fraîche prend la main : liste, vue, sélection, état de sauvegarde. */
+function adoptNewNote(note: Note): void {
+  notes.update((list) => [...list, note]);
+  currentView.set({ kind: 'all' });
+  searchQuery.set('');
+  filesOpen.set(false);
+  trashOpen.set(false);
+  selectedNoteId.set(note.id);
+  saveState.set('saved');
+}
+
+/**
+ * « Note du jour » : la note titrée du jour (ex. « 11 novembre 2026 »).
+ * Si elle existe déjà, on l'ouvre simplement — la capture du jour reste
+ * un seul et même endroit, jamais une ribambelle de doublons.
+ */
+export async function createDailyNote(): Promise<void> {
+  const title = new Date().toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  const existing = get(notes).find((n) => n.title === title);
+  if (existing) {
+    await selectNote(existing.id);
+    announce(`« ${title} » est déjà là.`);
+    return;
+  }
+  await flushSave();
+  try {
+    const note = await api.createNote({ title });
+    adoptNewNote(note);
+    announce(`« ${title} » créée.`);
   } catch {
     saveState.set('error');
   }

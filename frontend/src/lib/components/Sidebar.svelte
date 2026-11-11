@@ -11,6 +11,7 @@
   import { tagTint } from '../utils/tags';
   import {
     allTags,
+    createDailyNote,
     createFolder,
     createNote,
     expandedFolders,
@@ -226,6 +227,15 @@
       >
         <Icon name="plus" size={15} stroke={2.2} />
         Nouvelle note
+      </button>
+
+      <button
+        class="new-note daily"
+        title="Ouvrir (ou créer) la note du jour"
+        onclick={() => void createDailyNote()}
+      >
+        <Icon name="clock" size={15} />
+        Aujourd'hui
       </button>
 
       <button
@@ -587,6 +597,20 @@
     transform: translateY(1px);
   }
 
+  /* « Aujourd'hui » : même emplacement, poids secondaire — la note du
+     jour est un raccourci, pas l'action principale. */
+  .new-note.daily {
+    height: 32px;
+    margin-top: 0.4rem;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 550;
+    box-shadow: none;
+  }
+  .new-note.daily:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
 
   .finder {
     display: flex;

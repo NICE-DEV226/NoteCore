@@ -90,31 +90,110 @@ func (s *Service) ListNotes(ctx context.Context) ([]Note, error) {
 	return collectNotes(rows)
 }
 
-// SearchNotes cherche dans l'index FTS (titre, contenu, étiquettes).
-func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult, error) {
-	match, err := ftsExpr(query)
-	if err != nil {
-		return nil, err
+// searchFilter porte les opérateurs de recherche reconnus dans la
+// requête : `tag:<étiquette>` (ET entre elles), `dossier:<nom>` (OU
+// entre eux) et le mot isolé `favori`/`épinglé`/`pin`.
+type searchFilter struct {
+	text    string   // termes libres, pour le moteur FTS
+	tags    []string // étiquettes exactes exigées
+	folders []string // noms de dossiers acceptés
+	pinned  bool     // ne garder que les favoris
+}
+
+// parseSearchQuery sépare les opérateurs des termes libres. Un opérateur
+// inconnu ou mal formé reste dans le texte : il est cherché tel quel
+// plutôt que d'être avalé en silence.
+func parseSearchQuery(query string) searchFilter {
+	var f searchFilter
+	var free []string
+	for _, tok := range strings.Fields(query) {
+		lower := strings.ToLower(tok)
+		switch {
+		case strings.HasPrefix(lower, "tag:") && len(tok) > 4:
+			f.tags = append(f.tags, strings.ToLower(tok[4:]))
+		case (strings.HasPrefix(lower, "dossier:") && len(tok) > 8) ||
+			(strings.HasPrefix(lower, "folder:") && len(tok) > 7):
+			v := tok
+			if strings.HasPrefix(lower, "dossier:") {
+				v = tok[8:]
+			} else {
+				v = tok[7:]
+			}
+			f.folders = append(f.folders, v)
+		case lower == "favori" || lower == "épinglé" || lower == "epingle" || lower == "pin":
+			f.pinned = true
+		default:
+			free = append(free, tok)
+		}
 	}
-	if match == "" {
+	f.text = strings.Join(free, " ")
+	return f
+}
+
+// SearchNotes cherche dans l'index FTS (titre, contenu, étiquettes),
+// affinée par les opérateurs de parseSearchQuery.
+func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult, error) {
+	f := parseSearchQuery(query)
+	if f.text == "" && len(f.tags) == 0 && len(f.folders) == 0 && !f.pinned {
 		return nil, nil
 	}
-	// Extrait par colonne (contenu, titre, étiquettes) : une correspondance
-	// qui ne porte que sur le titre ne doit pas produire un extrait de
-	// contenu sans rapport — on retient le premier extrait qui surligne
-	// réellement le terme cherché.
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT notes.id, notes.title,
-		       snippet(notes_fts, 1, '«', '»', '…', 12),
-		       snippet(notes_fts, 0, '«', '»', '…', 12),
-		       snippet(notes_fts, 2, '«', '»', '…', 12),
-		       notes.updated_at
-		  FROM notes_fts
-		  JOIN notes ON notes.id = notes_fts.note_id
-		 WHERE notes_fts MATCH ? AND notes.deleted_at IS NULL
-		 ORDER BY bm25(notes_fts), notes.updated_at DESC
-		 LIMIT 50`,
-		match)
+
+	// Clause de filtrage commune aux deux chemins (FTS ou scan direct) :
+	// chaque fragment et ses paramètres sont construits ensemble.
+	var filters strings.Builder
+	var args []any
+	for _, tag := range f.tags {
+		// tags_text est joint par \x1f (char(31)) : la recherche est
+		// exacte, une étiquette « art » ne ramène pas « start ».
+		// lower() couvre la casse (les étiquettes ne sont pas
+		// normalisées en base).
+		filters.WriteString(` AND instr(lower(char(31)||notes.tags_text||char(31)), char(31)||?||char(31)) > 0`)
+		args = append(args, tag)
+	}
+	if len(f.folders) > 0 {
+		marks := strings.TrimSuffix(strings.Repeat("?,", len(f.folders)), ",")
+		filters.WriteString(` AND notes.folder_id IN (SELECT id FROM folders WHERE name IN (` + marks + `) COLLATE NOCASE)`)
+		for _, name := range f.folders {
+			args = append(args, name)
+		}
+	}
+	if f.pinned {
+		filters.WriteString(` AND notes.is_pinned = 1`)
+	}
+
+	var rows *sql.Rows
+	var err error
+	if f.text != "" {
+		match, ferr := ftsExpr(f.text)
+		if ferr != nil {
+			return nil, ferr
+		}
+		// Extrait par colonne (titre, contenu, étiquettes) : une correspondance
+		// qui ne porte que sur le titre ne doit pas produire un extrait de
+		// contenu sans rapport — on retient le premier extrait qui surligne
+		// réellement le terme cherché.
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT notes.id, notes.title,
+			       snippet(notes_fts, 1, '«', '»', '…', 12),
+			       snippet(notes_fts, 0, '«', '»', '…', 12),
+			       snippet(notes_fts, 2, '«', '»', '…', 12),
+			       notes.updated_at
+			  FROM notes_fts
+			  JOIN notes ON notes.id = notes_fts.note_id
+			 WHERE notes_fts MATCH ? AND notes.deleted_at IS NULL`+filters.String()+`
+			 ORDER BY bm25(notes_fts), notes.updated_at DESC
+			 LIMIT 50`,
+			append([]any{match}, args...)...)
+	} else {
+		// Recherche par opérateurs seuls : pas de texte libre, donc pas de
+		// jointure FTS — un balayage borné des notes actives suffit.
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT notes.id, notes.title, '', '', '', notes.updated_at
+			  FROM notes
+			 WHERE notes.deleted_at IS NULL`+filters.String()+`
+			 ORDER BY notes.is_pinned DESC, notes.updated_at DESC
+			 LIMIT 50`, args...)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("recherche : %w", err)
 	}
