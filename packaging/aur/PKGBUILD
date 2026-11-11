@@ -3,7 +3,7 @@
 # en minuscules selon les conventions de l'AUR.
 _pkgname=NoteCore
 pkgname=notecore
-pkgver=0.7.0
+pkgver=0.7.1
 pkgrel=1
 pkgdesc="Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs"
 arch=('x86_64')
