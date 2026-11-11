@@ -20,12 +20,14 @@
   import FolderPickerDialog from '../lib/components/FolderPickerDialog.svelte';
   import FolderTemplateDialog from '../lib/components/FolderTemplateDialog.svelte';
   import ReviewNudge from '../lib/components/ReviewNudge.svelte';
+  import SplitPane from '../lib/components/SplitPane.svelte';
   import { viewer } from '../lib/stores/files';
   import { onMount } from 'svelte';
   import { guideOpen, initGuide } from '../lib/stores/guide';
   import { reviewOpen } from '../lib/stores/review';
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
   import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
+  import { splitOpen } from '../lib/stores/workspace';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
@@ -73,7 +75,12 @@
 <main class="workbench" class:focus={$focusMode}>
   <Sidebar />
   <NoteList />
-  <EditorPane />
+  <div class="editor-zone" class:split={$splitOpen && !$focusMode}>
+    <EditorPane />
+    {#if $splitOpen && !$focusMode}
+      <SplitPane />
+    {/if}
+  </div>
 </main>
 
 {#if $focusMode}
@@ -139,6 +146,17 @@
     grid-template-columns: 248px minmax(260px, 330px) 1fr;
     height: 100vh;
     overflow: hidden;
+  }
+
+  /* Zone d'écriture : un ou deux volets quand le split-screen est ouvert. */
+  .editor-zone {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+  }
+  .editor-zone.split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   /* Concentration : seule la zone d'écriture reste visible. */

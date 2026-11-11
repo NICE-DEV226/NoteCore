@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"notecore/backend/internal/exporter"
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/preferences"
 	"notecore/backend/internal/review"
@@ -36,9 +37,13 @@ type NoteCore struct {
 	// Partage hors connexion (ADR-008) : un seul envoi à la fois, un seul import
 	// en attente de mot de passe, et les copies temporaires à supprimer.
 	shares   *share.Manager
-	mu       sync.Mutex
-	pending  *pendingImport
-	tempDirs []string
+	exporter *exporter.Service
+	// exportMu/exportTimer : debounce de la synchro Markdown, voir export.go.
+	exportMu    sync.Mutex
+	exportTimer *time.Timer
+	mu          sync.Mutex
+	pending     *pendingImport
+	tempDirs    []string
 	// Dossier des données de l'utilisateur, montré dans le guide de prise en main.
 	dataDir string
 }
@@ -47,7 +52,7 @@ func New(svc *notes.Service, db *sql.DB) *NoteCore {
 	if db == nil {
 		panic("bindings : base absente")
 	}
-	return &NoteCore{svc: svc, prefs: preferences.New(db), rev: review.New(db), db: db, shares: share.NewManager()}
+	return &NoteCore{svc: svc, prefs: preferences.New(db), rev: review.New(db), db: db, shares: share.NewManager(), exporter: exporter.New(svc)}
 }
 
 // Startup reçoit le contexte du runtime Wails (appelé automatiquement).
@@ -56,6 +61,10 @@ func (n *NoteCore) Startup(ctx context.Context) {
 		panic("startup sans contexte")
 	}
 	n.ctx = ctx
+	go n.reviewNotifier(ctx)
+	// Le miroir Markdown reflete l'état final : une passe au démarrage
+	// rattrape ce qui a changé pendant que l'application était fermée.
+	n.scheduleExportSync()
 }
 
 // SetStartupReport conserve le chemin de la copie de la base écrite avant
@@ -130,10 +139,12 @@ func (n *NoteCore) ListNotes() ([]notes.Note, error) {
 }
 
 func (n *NoteCore) CreateNote(title, folderID string) (notes.Note, error) {
+	defer n.scheduleExportSync()
 	return n.svc.CreateNote(n.callContext(), title, folderID)
 }
 
 func (n *NoteCore) UpdateNote(id string, patch NotePatch) (notes.Note, error) {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return notes.Note{}, fmt.Errorf("note à mettre à jour non identifiée")
 	}
@@ -141,6 +152,7 @@ func (n *NoteCore) UpdateNote(id string, patch NotePatch) (notes.Note, error) {
 }
 
 func (n *NoteCore) DeleteNote(id string) error {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return fmt.Errorf("note à supprimer non identifiée")
 	}
@@ -162,6 +174,7 @@ func (n *NoteCore) ListTrashedNotes() ([]notes.Note, error) {
 // RestoreNote sort une note de la corbeille, avec ses pièces jointes et
 // ses cartes de révision telles qu'elles étaient.
 func (n *NoteCore) RestoreNote(id string) (notes.Note, error) {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return notes.Note{}, fmt.Errorf("note à restaurer non identifiée")
 	}
@@ -171,6 +184,7 @@ func (n *NoteCore) RestoreNote(id string) (notes.Note, error) {
 // DeleteNoteForever détruit définitivement une note de la corbeille :
 // c'est le seul chemin où ses pièces jointes et ses cartes sont effacées.
 func (n *NoteCore) DeleteNoteForever(id string) error {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return fmt.Errorf("note à supprimer définitivement non identifiée")
 	}
@@ -179,6 +193,7 @@ func (n *NoteCore) DeleteNoteForever(id string) error {
 
 // EmptyTrash vide la corbeille et renvoie le nombre de notes détruites.
 func (n *NoteCore) EmptyTrash() (int, error) {
+	defer n.scheduleExportSync()
 	return n.svc.EmptyTrash(n.callContext())
 }
 
@@ -242,6 +257,7 @@ func (n *NoteCore) ListFolders() ([]notes.Folder, error) {
 
 // CreateFolder crée un dossier dans parentID ("" = racine).
 func (n *NoteCore) CreateFolder(name, parentID string) (notes.Folder, error) {
+	defer n.scheduleExportSync()
 	return n.svc.CreateFolderIn(n.callContext(), name, parentID)
 }
 
@@ -249,6 +265,7 @@ func (n *NoteCore) CreateFolder(name, parentID string) (notes.Folder, error) {
 // dossiers sous parentID ("" = racine), tout ou rien ; un dossier déjà présent
 // au même endroit est réutilisé.
 func (n *NoteCore) CreateFolderTree(parentID string, tree []notes.FolderSpec) (notes.TreeResult, error) {
+	defer n.scheduleExportSync()
 	res, err := n.svc.CreateFolderTree(n.callContext(), parentID, tree)
 	if res.Created == nil {
 		res.Created = []notes.Folder{}
@@ -262,6 +279,7 @@ func (n *NoteCore) CreateFolderTree(parentID string, tree []notes.FolderSpec) (n
 // MoveFolder déplace un dossier (avec tout ce qu'il contient) sous un autre
 // dossier ("" = racine). Refusé s'il se retrouverait dans l'un de ses descendants.
 func (n *NoteCore) MoveFolder(id, newParentID string) error {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return fmt.Errorf("dossier à déplacer non identifié")
 	}
@@ -270,6 +288,7 @@ func (n *NoteCore) MoveFolder(id, newParentID string) error {
 
 // MoveNotes range plusieurs notes dans un dossier ("" = sans dossier), tout ou rien.
 func (n *NoteCore) MoveNotes(noteIDs []string, folderID string) error {
+	defer n.scheduleExportSync()
 	return n.svc.MoveNotes(n.callContext(), noteIDs, folderID)
 }
 
@@ -292,6 +311,7 @@ func (n *NoteCore) Inbox() ([]notes.InboxItem, error) {
 }
 
 func (n *NoteCore) RenameFolder(id, name string) error {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return fmt.Errorf("dossier à renommer non identifié")
 	}
@@ -301,6 +321,7 @@ func (n *NoteCore) RenameFolder(id, name string) error {
 // DeleteFolder renvoie les notes déplacées à la racine — l'interface
 // les affiche sans perte silencieuse (cahier des charges §3.2).
 func (n *NoteCore) DeleteFolder(id string) ([]notes.Note, error) {
+	defer n.scheduleExportSync()
 	if id == "" {
 		return nil, fmt.Errorf("dossier à supprimer non identifié")
 	}

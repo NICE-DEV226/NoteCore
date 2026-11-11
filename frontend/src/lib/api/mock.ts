@@ -668,6 +668,26 @@ export const mockApi: NoteCoreApi = {
     settings[key] = value;
   },
 
+  // --- export Markdown unidirectionnel (miroir simulé en mémoire) ---
+
+  async markdownExportDir() {
+    await delay();
+    return settings['markdownExportDir'] ?? '';
+  },
+
+  async chooseMarkdownExportDir() {
+    await delay();
+    // Pas de dialogue système dans le mock : on propose un dossier type.
+    settings['markdownExportDir'] = '/tmp/notecore-export';
+    return settings['markdownExportDir'];
+  },
+
+  async setMarkdownExportDir(dir) {
+    await delay();
+    if (dir) settings['markdownExportDir'] = dir;
+    else delete settings['markdownExportDir'];
+  },
+
   // --- pièces jointes (ADR-006) ---
 
   async addAttachment(noteId, filename, mime, dataBase64) {
