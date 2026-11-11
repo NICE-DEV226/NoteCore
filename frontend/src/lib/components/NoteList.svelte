@@ -269,11 +269,10 @@
     </button>
   </header>
 
-  <div class="filters" role="tablist" aria-label="Filtrer les notes">
+  <div class="filters" role="group" aria-label="Filtrer les notes">
     {#each NOTE_FILTERS as f (f.kind)}
       <button
-        role="tab"
-        aria-selected={$currentView.kind === f.kind}
+        aria-pressed={$currentView.kind === f.kind}
         class="filter"
         class:active={$currentView.kind === f.kind}
         onclick={() => setFilter(f.kind)}

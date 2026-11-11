@@ -84,6 +84,32 @@
     return view.kind === kind;
   }
 
+  /**
+   * Surlignage à deux niveaux, une seule destination forte à la fois :
+   *  - `.active` : ce que montre la zone éditeur (accueil, note ouverte
+   *    dans le contexte courant, fichiers, corbeille) ;
+   *  - `.current-view` : le filtre appliqué à la liste, même sans note
+   *    ouverte — discret, il indique le contexte sans prétendre à la
+   *    destination.
+   */
+  const noteOpen = $derived($selectedNoteId !== null);
+  const onHome = $derived(!noteOpen && !$filesOpen && !$trashOpen);
+  // « Notes » couvre toutes les vues de liste sans ligne propre : les
+  // vues plates (toutes/récentes/favoris/à classer) et les étiquettes.
+  // Les dossiers ont leur ligne dans l'arbre.
+  const notesActive = $derived(noteOpen && $currentView.kind !== 'folder');
+  const notesContext = $derived($currentView.kind !== 'folder');
+  const folderActive = (id: string) =>
+    noteOpen && isActive($currentView, 'folder', id);
+
+  /** Échap referme les menus déroulants (création, données). */
+  function closeMenusOnEscape(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && (createMenuOpen || dataMenuOpen)) {
+      createMenuOpen = false;
+      dataMenuOpen = false;
+    }
+  }
+
   function startCreateFolder(parentId: string | null = null) {
     creatingParent = parentId;
     if (parentId) expandedFolders.update((set) => new Set(set).add(parentId));
@@ -211,6 +237,8 @@
     setThemePref($theme.theme === 'dark' ? 'light' : 'dark');
   }
 </script>
+
+<svelte:window onkeydown={closeMenusOnEscape} />
 
 <aside class="sidebar">
   {#if $sidebarCollapsed}
@@ -353,8 +381,8 @@
       <nav class="nav" aria-label="Navigation">
         <button
           class="nav-item"
-          class:active={$selectedNoteId === null && !$filesOpen && !$trashOpen}
-          aria-current={$selectedNoteId === null && !$filesOpen && !$trashOpen ? 'page' : undefined}
+          class:active={onHome}
+          aria-current={onHome ? 'page' : undefined}
           onclick={() => void goHome()}
         >
           <Icon name="home" size={16} />
@@ -362,8 +390,10 @@
         </button>
         <button
           class="nav-item"
-          class:active={['all', 'favorites', 'recent', 'inbox'].includes($currentView.kind) && !$filesOpen && !$trashOpen}
+          class:active={notesActive}
+          class:current-view={notesContext}
           title="Toutes les notes — les filtres (récentes, favoris, à classer) sont dans la liste"
+          aria-current={notesActive ? 'page' : undefined}
           onclick={goNotes}
         >
           <Icon name="notes" size={16} />
@@ -470,8 +500,9 @@
                   </button>
                   <button
                     class="nav-item folder"
+                    class:active={folderActive(folder.id)}
                     class:current-view={isActive($currentView, 'folder', folder.id)}
-                    aria-current={isActive($currentView, 'folder', folder.id) ? 'page' : undefined}
+                    aria-current={folderActive(folder.id) ? 'page' : undefined}
                     onclick={() => currentView.set({ kind: 'folder', folderId: folder.id })}
                     ondblclick={() => startRenameFolder(folder.id, folder.name)}
                     title={`${folder.name} — glissez des notes ici pour les ranger`}

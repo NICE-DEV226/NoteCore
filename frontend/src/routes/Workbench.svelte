@@ -59,7 +59,7 @@
     // Échap referme le volet secondaire — le réflexe « annuler le scindage ».
     // Une boîte modale ouverte garde la priorité (ses propres Échap).
     if (event.key === 'Escape' && $splitOpen && !$focusMode) {
-      if (!document.querySelector('[aria-modal="true"], dialog[open]')) {
+      if (!document.querySelector('[aria-modal="true"], dialog[open], [role="menu"]')) {
         splitNoteId.set(null);
       }
       return;
