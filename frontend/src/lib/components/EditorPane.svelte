@@ -17,6 +17,8 @@
   import { trashOpen } from '../stores/workspace';
   import { shareDialog } from '../stores/ui';
   import MarkdownPreview from '../editor/MarkdownPreview.svelte';
+  import BrainstormEditor from '../editor/BrainstormEditor.svelte';
+  import MindmapView from '../editor/MindmapView.svelte';
   import { EditorHistory } from '../editor/history';
   import {
     altText,
@@ -258,6 +260,8 @@
 
   const MODES: Array<{ value: EditorMode; label: string; icon: string }> = [
     { value: 'edit', label: 'Éditer', icon: 'edit' },
+    { value: 'brainstorm', label: 'Brainstorm', icon: 'sparkles' },
+    { value: 'mindmap', label: 'Carte', icon: 'layers' },
     { value: 'split', label: 'Scinder', icon: 'columns' },
     { value: 'preview', label: 'Aperçu', icon: 'eye' }
   ];
@@ -595,7 +599,7 @@
       </div>
     </div>
 
-    {#if editing}
+    {#if editing && (mode === 'edit' || mode === 'split')}
       <div class="formatbar" role="toolbar" aria-label="Mise en forme">
         <button title="Annuler — Ctrl+Z" aria-label="Annuler" onclick={undo}><Icon name="undo" size={15} /></button>
         <button title="Rétablir — Ctrl+Maj+Z" aria-label="Rétablir" onclick={redo}><Icon name="redo" size={15} /></button>
@@ -662,7 +666,7 @@
       onchange={(e) => void onFilesPicked(e, 'any')}
     />
 
-    <div class="document" class:split={mode === 'split'}>
+    <div class="document" class:split={mode === 'split' || mode === 'brainstorm' || mode === 'mindmap'}>
       <div class="head">
         <input
           class="title"
@@ -748,7 +752,20 @@
 
       <div class="panes">
         {#if editing}
-          <div class="pane write">
+          <div class="pane write" class:outline={mode === 'brainstorm'} class:mapview={mode === 'mindmap'}>
+            {#if mode === 'brainstorm'}
+              {#key note.id}
+                <BrainstormEditor
+                  content={note.content}
+                  spellcheck={$display.spellcheck}
+                  onChange={(text) => applyContent(text, true)}
+                />
+              {/key}
+            {:else if mode === 'mindmap'}
+              {#key note.id}
+                <MindmapView content={note.content} />
+              {/key}
+            {:else}
             <textarea
               bind:this={contentEl}
               value={note.content}
@@ -788,6 +805,7 @@
                 }
               }}
             ></textarea>
+            {/if}
           </div>
         {/if}
         {#if mode !== 'edit'}
@@ -1316,6 +1334,22 @@
     padding-left: 2rem;
   }
 
+  /* Mode brainstorm : l'outline occupe tout le volet, le défilement
+     interne à la liste (pas au volet) garde les branches visibles. */
+  .pane.write.outline {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .pane.write.outline :global(.outline) {
+    max-width: none;
+  }
+  /* Mode carte mentale : le canevas SVG occupe tout le volet. */
+  .pane.write.mapview {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
   textarea {
     display: block;
     width: 100%;

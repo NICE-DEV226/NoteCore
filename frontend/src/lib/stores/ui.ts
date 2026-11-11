@@ -7,14 +7,14 @@
 
 import { writable } from 'svelte/store';
 
-export type EditorMode = 'edit' | 'split' | 'preview';
+export type EditorMode = 'edit' | 'split' | 'preview' | 'brainstorm' | 'mindmap';
 
 const MODE_KEY = 'notecore.editorMode';
 
 function readMode(): EditorMode {
   try {
     const stored = localStorage.getItem(MODE_KEY);
-    if (stored === 'edit' || stored === 'split' || stored === 'preview') return stored;
+    if (stored === 'edit' || stored === 'split' || stored === 'preview' || stored === 'brainstorm' || stored === 'mindmap') return stored;
   } catch {
     /* stockage indisponible : valeur par défaut */
   }
