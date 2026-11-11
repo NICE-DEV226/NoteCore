@@ -50,6 +50,8 @@
   let nodes = $state(initialNodes());
   /** Ids des nœuds dont les enfants sont repliés. */
   let collapsed = $state<Set<number>>(new Set());
+  /** Nœud racine du zoom (null = plan entier). */
+  let zoomId = $state<number | null>(null);
   let inputs = $state<HTMLInputElement[]>([]);
 
   function emit(): void {
@@ -60,11 +62,39 @@
     return index + 1 < nodes.length && nodes[index + 1].depth > nodes[index].depth;
   }
 
-  /** Index des nœuds visibles (enfants des branches repliées masqués). */
+  /** Index du nœud zoomé et borne de sa sous-arborescence. */
+  const zoomRange = $derived.by(() => {
+    if (zoomId === null) return null;
+    const start = nodes.findIndex((n) => n.id === zoomId);
+    if (start < 0) return null;
+    const depth = nodes[start].depth;
+    let end = start + 1;
+    while (end < nodes.length && nodes[end].depth > depth) end++;
+    return { start, end, depth };
+  });
+
+  /** Chemin d'ancêtres du nœud zoomé, pour le fil d'Ariane. */
+  const zoomTrail = $derived.by(() => {
+    if (!zoomRange) return [];
+    const trail: Node[] = [];
+    let depth = zoomRange.depth;
+    for (let i = zoomRange.start - 1; i >= 0 && trail.length < depth; i--) {
+      if (nodes[i].depth < depth) {
+        trail.unshift(nodes[i]);
+        depth = nodes[i].depth;
+      }
+    }
+    return trail;
+  });
+
+  /** Index des nœuds visibles (zoom + branches repliées masqués). */
   function visible(): number[] {
     const out: number[] = [];
+    const range = zoomRange;
+    const from = range ? range.start : 0;
+    const to = range ? range.end : nodes.length;
     let hiddenDepth = -1;
-    for (let i = 0; i < nodes.length; i++) {
+    for (let i = from; i < to; i++) {
       if (hiddenDepth >= 0) {
         if (nodes[i].depth > hiddenDepth) continue;
         hiddenDepth = -1;
@@ -125,6 +155,62 @@
     collapsed = next;
   }
 
+  /** Zoom : isole la sous-arborescence du nœud (focus Workflowy). */
+  function zoomIn(index: number): void {
+    if (hasChildren(index)) {
+      zoomId = nodes[index].id;
+      focusNode(index);
+    }
+  }
+
+  /** Dézoome d'un niveau vers l'ancêtre, ou du plan entier. */
+  function zoomOut(): void {
+    if (!zoomRange) return;
+    const parent = zoomTrail[zoomTrail.length - 1];
+    if (parent) {
+      zoomId = parent.id;
+      focusNode(nodes.indexOf(parent));
+    } else {
+      zoomId = null;
+    }
+  }
+
+  /** Déplace le nœud et sa sous-arborescence avant/après son voisin. */
+  function moveNode(index: number, dir: -1 | 1): void {
+    const depth = nodes[index].depth;
+    // Étendue du bloc : le nœud + ses descendants.
+    let end = index + 1;
+    while (end < nodes.length && nodes[end].depth > depth) end++;
+    const block = nodes.splice(index, end - index);
+
+    if (dir === -1) {
+      // Précédent frère : dernier nœud de même profondeur avant le bloc.
+      let target = index - 1;
+      while (target >= 0 && nodes[target].depth > depth) target--;
+      if (target < 0 || nodes[target].depth !== depth) {
+        nodes.splice(index, 0, ...block);
+        return;
+      }
+      // Le bloc s'insère juste avant le frère précédent — sa
+      // sous-arborescence (déjà passée) reste derrière lui.
+      nodes.splice(target, 0, ...block);
+      focusNode(target);
+    } else {
+      // Suivant frère : premier nœud de même profondeur après le bloc.
+      let target = index; // index décalé après splice : le bloc est retiré
+      while (target < nodes.length && nodes[target].depth > depth) target++;
+      if (target >= nodes.length || nodes[target].depth !== depth) {
+        nodes.splice(index, 0, ...block);
+        return;
+      }
+      let insertAt = target + 1;
+      while (insertAt < nodes.length && nodes[insertAt].depth > depth) insertAt++;
+      nodes.splice(insertAt, 0, ...block);
+      focusNode(insertAt - block.length);
+    }
+    emit();
+  }
+
   /** Case à cocher en tête de puce : « [ ] » / « [x] ». */
   function checkboxState(text: string): 'none' | 'todo' | 'done' {
     if (/^\[ \]\s*/.test(text)) return 'todo';
@@ -147,6 +233,15 @@
     const visIdx = vis.indexOf(index);
 
     switch (e.key) {
+      case 'Escape':
+        // Échap dans l'outline = dézoomer d'un niveau ; on ne le laisse
+        // pas remonter à la fenêtre (qui fermerait le volet split).
+        if (zoomRange) {
+          e.preventDefault();
+          e.stopPropagation();
+          zoomOut();
+        }
+        break;
       case 'Enter':
         e.preventDefault();
         insertAfter(index);
@@ -158,11 +253,26 @@
         break;
       case 'ArrowUp':
         e.preventDefault();
-        if (visIdx > 0) focusNode(vis[visIdx - 1], 'end');
+        if (e.altKey) moveNode(index, -1);
+        else if (visIdx > 0) focusNode(vis[visIdx - 1], 'end');
         break;
       case 'ArrowDown':
         e.preventDefault();
-        if (visIdx >= 0 && visIdx < vis.length - 1) focusNode(vis[visIdx + 1], 'start');
+        if (e.altKey) moveNode(index, 1);
+        else if (visIdx >= 0 && visIdx < vis.length - 1) focusNode(vis[visIdx + 1], 'start');
+        break;
+      case 'ArrowRight':
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+          e.preventDefault();
+          zoomIn(index);
+        }
+        break;
+      case 'ArrowLeft':
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && zoomRange) {
+          e.preventDefault();
+          e.stopPropagation();
+          zoomOut();
+        }
         break;
       case 'Backspace':
         if (caretStart === 0 && nodes[index].text === '') {
@@ -192,6 +302,17 @@
 </script>
 
 <div class="outline" role="tree" aria-label="Plan de brainstorm">
+  {#if zoomRange}
+    <nav class="crumbs" aria-label="Position dans le plan">
+      <button class="crumb" onclick={() => { zoomId = null; }}>Plan</button>
+      {#each zoomTrail as ancestor (ancestor.id)}
+        <Icon name="chevron-right" size={11} />
+        <button class="crumb" onclick={() => { zoomId = ancestor.id; }}>{ancestor.text || '…'}</button>
+      {/each}
+      <Icon name="chevron-right" size={11} />
+      <span class="crumb here">{nodes[zoomRange.start].text || '…'}</span>
+    </nav>
+  {/if}
   {#each vis as index (nodes[index].id)}
     {@const n = nodes[index]}
     {@const children = hasChildren(index)}
@@ -250,7 +371,8 @@
     </div>
   {/each}
   <p class="hint">
-    Entrée : nouvelle puce · Tab : indenter · Maj+Tab : désindenter · flèches : naviguer · Backspace sur une puce vide : supprimer
+    Entrée : nouvelle puce · Tab : indenter · Maj+Tab : désindenter · Alt+↑/↓ : déplacer ·
+    Ctrl+Maj+→ : zoom sur la branche · Échap : dézoomer · flèches : naviguer
   </p>
 </div>
 
@@ -351,5 +473,44 @@
     font-size: 0.76rem;
     color: var(--text-faint);
     text-align: center;
+  }
+  .crumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .crumbs :global(svg) {
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  .crumb {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--accent-text);
+    font: inherit;
+    cursor: pointer;
+    padding: 0.1rem 0.3rem;
+    border-radius: var(--radius-sm);
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .crumb:hover {
+    background: var(--hover);
+  }
+  .crumb.here {
+    color: var(--text);
+    font-weight: 600;
+    cursor: default;
+  }
+  .crumb.here:hover {
+    background: transparent;
   }
 </style>
