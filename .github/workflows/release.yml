@@ -186,9 +186,10 @@ jobs:
             echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder
             su builder -c "cd /work/packaging/aur && \
               PACKAGER=\"NoteCore CI <ci@notecore>\" makepkg -s --noconfirm"
+            mkdir -p /work/dist-tmp
+            mv /work/packaging/aur/*.pkg.tar.zst /work/dist-tmp/
+            chmod -R a+rX /work/dist-tmp
           '
-          mkdir -p dist-tmp
-          mv packaging/aur/*.pkg.tar.zst dist-tmp/
           ls -lh dist-tmp
 
       - name: Publier en artefact
