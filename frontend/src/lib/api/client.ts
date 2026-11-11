@@ -130,6 +130,26 @@ class WailsAdapter implements NoteCoreApi {
   async deleteNote(id: string): Promise<void> {
     await this.svc.DeleteNote(id);
   }
+
+  // --- corbeille ---
+
+  async listTrashedNotes(): Promise<Note[]> {
+    const raw = (await this.svc.ListTrashedNotes()) as unknown[] | null;
+    return (raw ?? []).map((p) => this.toNote(p));
+  }
+
+  async restoreNote(id: string): Promise<Note> {
+    return this.toNote(await this.svc.RestoreNote(id));
+  }
+
+  async deleteNoteForever(id: string): Promise<void> {
+    await this.svc.DeleteNoteForever(id);
+  }
+
+  async emptyTrash(): Promise<number> {
+    return ((await this.svc.EmptyTrash()) as number | null) ?? 0;
+  }
+
 // FUNCTION asyncrhone for folder creation
   async createFolder(name: string, parentId?: string | null): Promise<Folder> {
     return (await this.svc.CreateFolder(name, parentId ?? '')) as Folder;

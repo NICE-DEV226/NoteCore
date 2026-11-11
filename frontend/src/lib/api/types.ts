@@ -21,6 +21,12 @@ export interface Note {
   /** Dates au format UTC normalisé (ARCHITECTURE.md §4). */
   createdAt: string;
   updatedAt: string;
+  /**
+   * Date de mise à la corbeille (RFC 3339), absente pour une note
+   * active. Une note à la corbeille n'apparaît ni dans les listes ni
+   * dans la recherche, mais garde tout : restauration complète possible.
+   */
+  deletedAt?: string;
 }
 
 /** Résultat de recherche renvoyé par le backend (ADR-003 : extraits

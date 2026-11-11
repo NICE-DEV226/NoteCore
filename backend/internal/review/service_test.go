@@ -82,8 +82,19 @@ func TestSupprimerLaNoteEmporteSesCartes(t *testing.T) {
 	if err := e.notes.DeleteNote(e.ctx, n.ID); err != nil {
 		t.Fatal(err)
 	}
+	// À la corbeille, les cartes sont intactes : la restauration doit les
+	// retrouver telles quelles, et elles ne doivent plus être proposées.
+	if got := e.count(t, "1=1"); got != 2 {
+		t.Errorf("%d carte(s) perdue(s) à la mise à la corbeille", 2-got)
+	}
+	if card, err := e.rev.Next(e.ctx); err != nil || card != nil {
+		t.Errorf("une carte de note à la corbeille est encore proposée : %+v, %v", card, err)
+	}
+	if err := e.notes.DeleteNoteForever(e.ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
 	if got := e.count(t, "1=1"); got != 0 {
-		t.Errorf("%d carte(s) orpheline(s) après suppression de la note", got)
+		t.Errorf("%d carte(s) orpheline(s) après suppression définitive", got)
 	}
 }
 

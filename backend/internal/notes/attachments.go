@@ -17,6 +17,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // MaxAttachmentBytes borne une pièce jointe unique. Au-delà, l'ajout est
@@ -248,9 +251,15 @@ func normalizeMime(raw string) string {
 	return m
 }
 
+// isForeignKeyErr reconnaît une violation de clé étrangère par le code
+// étendu SQLite, avec un repli sur le message.
 func isForeignKeyErr(err error) bool {
 	if err == nil {
 		return false
+	}
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		return se.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
 	}
 	return strings.Contains(strings.ToUpper(err.Error()), "FOREIGN KEY")
 }
@@ -271,6 +280,7 @@ func (s *Service) ListAllAttachments(ctx context.Context) ([]AttachmentRef, erro
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT a.id, a.note_id, a.filename, a.mime, a.size, a.created_at, n.title, n.folder_id
 		  FROM attachments a JOIN notes n ON n.id = a.note_id
+		 WHERE n.deleted_at IS NULL
 		 ORDER BY a.created_at DESC, a.id`)
 	if err != nil {
 		return nil, fmt.Errorf("lecture des pièces jointes : %w", err)

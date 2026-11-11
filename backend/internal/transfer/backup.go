@@ -137,6 +137,15 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 		return fmt.Errorf("inspection du schéma sauvegardé : %w", err)
 	}
 	hasParent := parentCols > 0
+	// Corbeille (schéma 5) : une sauvegarde plus ancienne n'a pas la colonne ;
+	// ses notes restaurées sont toutes actives, ce qui est le bon défaut.
+	var deletedCols int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('notes', 'restore_source') WHERE name = 'deleted_at'`,
+	).Scan(&deletedCols); err != nil {
+		return fmt.Errorf("inspection du schéma sauvegardé : %w", err)
+	}
+	hasDeletedAt := deletedCols > 0
 	// Même règle pour les cartes de révision (schéma 3, ADR-007).
 	hasCards, err := attachedTableExists(db, "restore_source", "cards")
 	if err != nil {
@@ -146,7 +155,6 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
-
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("début de la restauration : %w", err)
@@ -175,9 +183,18 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 		`DELETE FROM settings`,
 		`INSERT INTO folders(id, name, created_at, updated_at)
 			SELECT id, name, created_at, updated_at FROM restore_source.folders`,
-		`INSERT INTO notes(id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at)
-			SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at FROM restore_source.notes`,
 	)
+	if hasDeletedAt {
+		statements = append(statements,
+			`INSERT INTO notes(id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at, deleted_at)
+				SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at, deleted_at FROM restore_source.notes`,
+		)
+	} else {
+		statements = append(statements,
+			`INSERT INTO notes(id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at)
+				SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at FROM restore_source.notes`,
+		)
+	}
 	if hasAttachments {
 		statements = append(statements,
 			`INSERT INTO attachments(id, note_id, filename, mime, size, data, created_at)

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"notecore/backend/internal/review"
 )
@@ -28,6 +30,11 @@ type Note struct {
 	Tags      []string `json:"tags"`
 	CreatedAt string   `json:"createdAt"`
 	UpdatedAt string   `json:"updatedAt"`
+	// DeletedAt : date de mise à la corbeille (RFC 3339), null/absent pour
+	// une note active. Une note à la corbeille n'apparaît nulle part
+	// (listes, recherche, révision) mais garde tout : ses pièces jointes
+	// et ses cartes de révision la suivent, la restauration est complète.
+	DeletedAt *string `json:"deletedAt,omitempty"`
 }
 
 type Folder struct {
@@ -68,10 +75,14 @@ func New(db *sql.DB) *Service {
 
 // --- lectures -------------------------------------------------------------
 
+// noteColumns est la liste des colonnes lues par scanNote : tout SELECT
+// qui alimente un Note doit la reprendre telle quelle.
+const noteColumns = `id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at, deleted_at`
+
 func (s *Service) ListNotes(ctx context.Context) ([]Note, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at
-		FROM notes ORDER BY is_pinned DESC, updated_at DESC`)
+		SELECT `+noteColumns+`
+		FROM notes WHERE deleted_at IS NULL ORDER BY is_pinned DESC, updated_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("lecture des notes : %w", err)
 	}
@@ -88,13 +99,19 @@ func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult
 	if match == "" {
 		return nil, nil
 	}
+	// Extrait par colonne (contenu, titre, étiquettes) : une correspondance
+	// qui ne porte que sur le titre ne doit pas produire un extrait de
+	// contenu sans rapport — on retient le premier extrait qui surligne
+	// réellement le terme cherché.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT notes.id, notes.title,
 		       snippet(notes_fts, 1, '«', '»', '…', 12),
+		       snippet(notes_fts, 0, '«', '»', '…', 12),
+		       snippet(notes_fts, 2, '«', '»', '…', 12),
 		       notes.updated_at
 		  FROM notes_fts
 		  JOIN notes ON notes.id = notes_fts.note_id
-		 WHERE notes_fts MATCH ?
+		 WHERE notes_fts MATCH ? AND notes.deleted_at IS NULL
 		 ORDER BY bm25(notes_fts), notes.updated_at DESC
 		 LIMIT 50`,
 		match)
@@ -106,12 +123,31 @@ func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult
 	var out []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		if err := rows.Scan(&r.NoteID, &r.Title, &r.Excerpt, &r.UpdatedAt); err != nil {
+		var snippets [3]string
+		if err := rows.Scan(&r.NoteID, &r.Title, &snippets[0], &snippets[1], &snippets[2], &r.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan recherche : %w", err)
 		}
+		r.Excerpt = bestSnippet(snippets)
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// bestSnippet choisit l'extrait le plus parlant : celui qui contient les
+// balises de surlignage «…», dans l'ordre contenu, titre, étiquettes ;
+// à défaut, le premier extrait non vide.
+func bestSnippet(snippets [3]string) string {
+	for _, s := range snippets {
+		if strings.Contains(s, "«") {
+			return s
+		}
+	}
+	for _, s := range snippets {
+		if strings.TrimSpace(s) != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // --- écritures ------------------------------------------------------------
@@ -173,8 +209,7 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 	defer tx.Rollback()
 
 	row := tx.QueryRowContext(ctx, `
-		SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at
-		  FROM notes WHERE id = ?`, id)
+		SELECT `+noteColumns+` FROM notes WHERE id = ?`, id)
 	n, err := scanNote(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -250,9 +285,11 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 	return n, nil
 }
 
-// DeleteNote supprime sans confirmation (la confirmation est une
-// responsabilité d'interface — cahier des charges §3.1). La ligne FTS est
-// détachée avant la note, dans la même transaction.
+// DeleteNote met la note à la corbeille : elle disparaît des listes, de la
+// recherche et de la révision, mais rien n'est détruit — ses pièces
+// jointes et ses cartes de révision restent liés et la restauration est
+// complète (RestoreNote). La suppression définitive est DeleteNoteForever,
+// réservée à la corbeille ou à la purge automatique.
 func (s *Service) DeleteNote(ctx context.Context, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -263,7 +300,9 @@ func (s *Service) DeleteNote(ctx context.Context, id string) error {
 	if err := unindexInTx(ctx, tx, id); err != nil {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
+	res, err := tx.ExecContext(ctx,
+		`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		time.Now().UTC().Format(time.RFC3339), id)
 	if err != nil {
 		return fmt.Errorf("suppression note : %w", err)
 	}
@@ -276,11 +315,135 @@ func (s *Service) DeleteNote(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetNote lit une note complète (utilisé par l'export).
+// --- corbeille -------------------------------------------------------------
+
+// ListTrashed renvoie les notes à la corbeille, les plus récemment mises
+// de côté d'abord.
+func (s *Service) ListTrashed(ctx context.Context) ([]Note, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+noteColumns+`
+		  FROM notes WHERE deleted_at IS NOT NULL
+		 ORDER BY deleted_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("lecture de la corbeille : %w", err)
+	}
+	defer rows.Close()
+	return collectNotes(rows)
+}
+
+// RestoreNote sort une note de la corbeille : même identifiant, mêmes
+// pièces jointes, mêmes cartes de révision — rien n'a été perdu pendant
+// la mise de côté. L'index FTS est reconstruit dans la même transaction.
+func (s *Service) RestoreNote(ctx context.Context, id string) (Note, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Note{}, fmt.Errorf("démarrage restauration : %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE notes SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return Note{}, fmt.Errorf("restauration note : %w", err)
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return Note{}, fmt.Errorf("note %q introuvable dans la corbeille", id)
+	}
+	if err := reindexInTx(ctx, tx, id); err != nil {
+		return Note{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Note{}, fmt.Errorf("commit restauration : %w", err)
+	}
+	return s.GetNote(ctx, id)
+}
+
+// DeleteNoteForever détruit définitivement une note : c'est le SEUL
+// chemin où les cascades SQL jouent (pièces jointes, cartes, étiquettes).
+// Réservé à la corbeille ou à la purge automatique — jamais à la
+// suppression « normale », qui passe par DeleteNote.
+func (s *Service) DeleteNoteForever(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("démarrage suppression définitive : %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := unindexInTx(ctx, tx, id); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("suppression définitive note : %w", err)
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return fmt.Errorf("note %q introuvable", id)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit suppression définitive : %w", err)
+	}
+	return nil
+}
+
+// EmptyTrash vide la corbeille : chaque note est supprimée définitivement,
+// avec tout ce qui lui est lié. Renvoie le nombre de notes détruites.
+func (s *Service) EmptyTrash(ctx context.Context) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("démarrage vidage corbeille : %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM notes_fts WHERE note_id IN (SELECT id FROM notes WHERE deleted_at IS NOT NULL)`); err != nil {
+		return 0, fmt.Errorf("nettoyage index corbeille : %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE deleted_at IS NOT NULL`)
+	if err != nil {
+		return 0, fmt.Errorf("vidage corbeille : %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit vidage corbeille : %w", err)
+	}
+	return int(n), nil
+}
+
+// PurgeTrash détruit définitivement les notes à la corbeille depuis plus
+// longtemps que la durée donnée (rétention de la corbeille). Appelé au
+// démarrage : une note oubliée finit par être libérée, jamais avant.
+// Renvoie le nombre de notes purgées.
+func (s *Service) PurgeTrash(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-olderThan).Format(time.RFC3339)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("démarrage purge corbeille : %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM notes_fts WHERE note_id IN (SELECT id FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?)`,
+		cutoff); err != nil {
+		return 0, fmt.Errorf("nettoyage index corbeille : %w", err)
+	}
+	res, err := tx.ExecContext(ctx,
+		`DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("purge corbeille : %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit purge corbeille : %w", err)
+	}
+	return int(n), nil
+}
+
+// GetNote lit une note complète (utilisé par l'export). Une note à la
+// corbeille reste lisible par identifiant : la restauration et l'export
+// en dépendent.
 func (s *Service) GetNote(ctx context.Context, id string) (Note, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at
-		  FROM notes WHERE id = ?`, id)
+		SELECT `+noteColumns+` FROM notes WHERE id = ?`, id)
 	n, err := scanNote(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -357,15 +520,19 @@ func splitTags(joined string) []string {
 
 func scanNote(r rowScanner) (Note, error) {
 	var n Note
-	var folderID sql.NullString
+	var folderID, deletedAt sql.NullString
 	var pinned int
 	var tagsText string
-	if err := r.Scan(&n.ID, &n.Title, &n.Content, &folderID, &pinned, &tagsText, &n.CreatedAt, &n.UpdatedAt); err != nil {
+	if err := r.Scan(&n.ID, &n.Title, &n.Content, &folderID, &pinned, &tagsText, &n.CreatedAt, &n.UpdatedAt, &deletedAt); err != nil {
 		return n, fmt.Errorf("scan note : %w", err)
 	}
 	if folderID.Valid {
 		v := folderID.String
 		n.FolderID = &v
+	}
+	if deletedAt.Valid {
+		v := deletedAt.String
+		n.DeletedAt = &v
 	}
 	n.IsPinned = pinned == 1
 	n.Tags = splitTags(tagsText)
@@ -488,8 +655,8 @@ func folderExists(ctx context.Context, q rowQueryer, id string) (bool, error) {
 
 func listNotesByFolderInTx(ctx context.Context, tx *sql.Tx, folderID string) ([]Note, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, title, content, folder_id, is_pinned, tags_text, created_at, updated_at
-		  FROM notes WHERE folder_id = ?`, folderID)
+		SELECT `+noteColumns+`
+		  FROM notes WHERE folder_id = ? AND deleted_at IS NULL`, folderID)
 	if err != nil {
 		return nil, fmt.Errorf("lecture notes du dossier : %w", err)
 	}
@@ -497,8 +664,14 @@ func listNotesByFolderInTx(ctx context.Context, tx *sql.Tx, folderID string) ([]
 	return collectNotes(rows)
 }
 
-// isUniqueConstraint reconnaît l'erreur d'unicité SQLite indépendamment
-// du pilote (le message moderne contient « UNIQUE constraint failed »).
+// isUniqueConstraint reconnaît une violation d'unicité par le code
+// étendu SQLite (le driver modernc active les codes étendus), avec un
+// repli sur le message pour les erreurs non typées.
 func isUniqueConstraint(err error) bool {
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		return se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE ||
+			se.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
+	}
 	return strings.Contains(strings.ToUpper(err.Error()), "UNIQUE")
 }

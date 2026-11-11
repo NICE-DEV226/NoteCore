@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/preferences"
@@ -144,6 +145,49 @@ func (n *NoteCore) DeleteNote(id string) error {
 		return fmt.Errorf("note à supprimer non identifiée")
 	}
 	return n.svc.DeleteNote(n.callContext(), id)
+}
+
+// --- corbeille ------------------------------------------------------------
+
+// ListTrashedNotes renvoie les notes mises de côté, jamais détruites
+// sans action explicite (restauration ou suppression définitive).
+func (n *NoteCore) ListTrashedNotes() ([]notes.Note, error) {
+	out, err := n.svc.ListTrashed(n.callContext())
+	if out == nil {
+		out = []notes.Note{}
+	}
+	return out, err
+}
+
+// RestoreNote sort une note de la corbeille, avec ses pièces jointes et
+// ses cartes de révision telles qu'elles étaient.
+func (n *NoteCore) RestoreNote(id string) (notes.Note, error) {
+	if id == "" {
+		return notes.Note{}, fmt.Errorf("note à restaurer non identifiée")
+	}
+	return n.svc.RestoreNote(n.callContext(), id)
+}
+
+// DeleteNoteForever détruit définitivement une note de la corbeille :
+// c'est le seul chemin où ses pièces jointes et ses cartes sont effacées.
+func (n *NoteCore) DeleteNoteForever(id string) error {
+	if id == "" {
+		return fmt.Errorf("note à supprimer définitivement non identifiée")
+	}
+	return n.svc.DeleteNoteForever(n.callContext(), id)
+}
+
+// EmptyTrash vide la corbeille et renvoie le nombre de notes détruites.
+func (n *NoteCore) EmptyTrash() (int, error) {
+	return n.svc.EmptyTrash(n.callContext())
+}
+
+// PurgeTrash libère les notes à la corbeille depuis plus de la durée
+// donnée — appelé une fois au démarrage (rétention de 30 jours). Le
+// contexte est passé en paramètre, comme MaintainReview : au lancement,
+// le contexte runtime Wails n'existe pas encore.
+func (n *NoteCore) PurgeTrash(ctx context.Context) (int, error) {
+	return n.svc.PurgeTrash(ctx, 30*24*time.Hour)
 }
 
 func (n *NoteCore) SearchNotes(query string) ([]notes.SearchResult, error) {

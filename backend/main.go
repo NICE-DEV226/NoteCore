@@ -79,6 +79,14 @@ func run() error {
 		log.Printf("révision : maintenance impossible : %v", err)
 	}
 
+	// Corbeille : les notes mises de côté depuis plus de 30 jours sont
+	// détruites définitivement. Jamais bloquant : une panne est journalisée.
+	if n, err := api.PurgeTrash(context.Background()); err != nil {
+		log.Printf("corbeille : purge impossible : %v", err)
+	} else if n > 0 {
+		log.Printf("corbeille : %d note(s) conservée(s) depuis plus de 30 jours, détruite(s)", n)
+	}
+
 	return wails.Run(&options.App{
 		Title:  "NoteCore",
 		Width:  1024,

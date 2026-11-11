@@ -35,6 +35,14 @@ export const notes = writable<Note[]>([]);
 export const folders = writable<Folder[]>([]);
 export const loaded = writable<boolean>(false);
 
+/**
+ * Corbeille : notes mises de côté, jamais détruites sans action
+ * explicite. `trashOpen` occupe la zone principale comme la vue
+ * « Fichiers » quand aucune note n'est ouverte.
+ */
+export const trashedNotes = writable<Note[]>([]);
+export const trashOpen = writable(false);
+
 export const selectedNoteId = writable<string | null>(null);
 export const currentView = writable<View>({ kind: 'all' });
 export const searchQuery = writable<string>('');
@@ -310,6 +318,7 @@ export async function initWorkspace(): Promise<void> {
   loaded.set(true);
   void refreshReview();
   void refreshInbox();
+  void refreshTrash();
 
   if (safetyCopy) {
     notifyTransfer(
@@ -335,20 +344,43 @@ export async function reloadData(): Promise<void> {
   folders.set(loadedFolders ?? []);
   void refreshReview();
   void refreshInbox();
+  void refreshTrash();
+}
+
+/** Relit la corbeille seule (après une mise de côté ou une restauration). */
+export async function refreshTrash(): Promise<void> {
+  try {
+    trashedNotes.set((await api.listTrashedNotes()) ?? []);
+  } catch {
+    // La corbeille est un confort, pas une donnée critique : un échec de
+    // lecture ne doit pas masquer le reste de l'espace de travail.
+    trashedNotes.set([]);
+  }
 }
 
 /** Retourne à l'accueil : aucune note ouverte, modifications d'abord écrites. */
 export async function goHome(): Promise<void> {
   await flushSave();
   filesOpen.set(false);
+  trashOpen.set(false);
   selectedNoteId.set(null);
 }
 
 /** Ouvre la vue « Fichiers » (toutes les pièces jointes) à la place de l'éditeur. */
 export async function goFiles(): Promise<void> {
   await flushSave();
+  trashOpen.set(false);
   selectedNoteId.set(null);
   filesOpen.set(true);
+}
+
+/** Ouvre la corbeille à la place de l'éditeur. */
+export async function goTrash(): Promise<void> {
+  await flushSave();
+  filesOpen.set(false);
+  selectedNoteId.set(null);
+  trashOpen.set(true);
+  void refreshTrash();
 }
 
 /** Sélectionne une note en forçant d'abord l'écriture des modifications en attente. */
@@ -356,6 +388,7 @@ export async function selectNote(id: string): Promise<void> {
   if (id === get(selectedNoteId)) return;
   await flushSave();
   filesOpen.set(false);
+  trashOpen.set(false);
   selectedNoteId.set(id);
 }
 
@@ -367,6 +400,7 @@ export async function createNote(folderId: string | null = null): Promise<void> 
     currentView.set({ kind: 'all' });
     searchQuery.set('');
     filesOpen.set(false);
+    trashOpen.set(false);
     selectedNoteId.set(note.id);
     saveState.set('saved');
   } catch {
@@ -421,8 +455,52 @@ export async function deleteNote(id: string): Promise<void> {
     notes.update((list) => list.filter((n) => n.id !== id));
     if (get(selectedNoteId) === id) selectedNoteId.set(null);
     saveState.set('saved');
+    void refreshTrash();
+    void refreshReview();
+    announce('Note déplacée à la corbeille — restauration possible depuis « Corbeille ».');
   } catch {
     saveState.set('error');
+  }
+}
+
+// --- corbeille --------------------------------------------------------------
+
+/** Sort une note de la corbeille et la rouvre dans l'espace de travail. */
+export async function restoreTrashedNote(id: string): Promise<void> {
+  try {
+    const restored = await api.restoreNote(id);
+    trashedNotes.update((list) => list.filter((n) => n.id !== id));
+    notes.update((list) => [...list, restored]);
+    void refreshReview();
+    void refreshInbox();
+    announce(`« ${restored.title || 'Sans titre'} » restaurée.`);
+  } catch {
+    announce("La restauration n'a pas pu aboutir.");
+  }
+}
+
+/** Détruit définitivement une note de la corbeille (confirmation exigée par l'appelant). */
+export async function deleteTrashedForever(id: string): Promise<boolean> {
+  try {
+    await api.deleteNoteForever(id);
+    trashedNotes.update((list) => list.filter((n) => n.id !== id));
+    void refreshReview();
+    return true;
+  } catch {
+    announce("La suppression définitive n'a pas pu aboutir.");
+    return false;
+  }
+}
+
+/** Vide toute la corbeille (confirmation exigée par l'appelant). */
+export async function emptyTrashAll(): Promise<void> {
+  try {
+    const n = await api.emptyTrash();
+    trashedNotes.set([]);
+    void refreshReview();
+    announce(n === 0 ? 'La corbeille était déjà vide.' : `${n} note${n > 1 ? 's' : ''} détruite${n > 1 ? 's' : ''} définitivement.`);
+  } catch {
+    announce("Le vidage de la corbeille n'a pas pu aboutir.");
   }
 }
 

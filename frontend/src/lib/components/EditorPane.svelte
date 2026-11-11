@@ -10,9 +10,22 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import Home from './Home.svelte';
   import Files from './Files.svelte';
+  import Trash from './Trash.svelte';
   import { filesOpen, openAttachmentViewer } from '../stores/files';
+  import { trashOpen } from '../stores/workspace';
   import { shareDialog } from '../stores/ui';
   import MarkdownPreview from '../editor/MarkdownPreview.svelte';
+  import { EditorHistory } from '../editor/history';
+  import {
+    altText,
+    attachmentSize,
+    cleanFormatText,
+    looksLikeImage,
+    MAX_ATTACHMENT_BYTES,
+    readFileAsBase64,
+    selectedLines,
+    stripAttachmentRefs,
+  } from '../utils/editorText';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
   import { acceptSuggestion, folderTree, inboxSuggestions } from '../stores/workspace';
@@ -56,78 +69,34 @@
   };
 
   // --- annulation / rétablissement ---------------------------------------
-  // Historique propre à l'éditeur : l'annulation native du champ ne couvre
-  // pas les modifications faites par la barre d'outils (écriture
-  // programmatique) et ne survit pas au rendu piloté par le store.
-
-  type Snapshot = { value: string };
-  const HISTORY_LIMIT = 200;
-  /** Frappes rapprochées : une seule étape d'annulation. */
-  const GROUP_MS = 700;
-
-  let historyNoteId = '';
-  let undoStack: Snapshot[] = [];
-  let redoStack: Snapshot[] = [];
-  let lastEditAt = 0;
-
-  function ensureHistory(): void {
-    if (!note || note.id === historyNoteId) return;
-    historyNoteId = note.id;
-    undoStack = [];
-    redoStack = [];
-    lastEditAt = 0;
-  }
-
-  /** À appeler AVANT de remplacer le contenu. `group` fusionne les frappes. */
-  function recordBeforeChange(group: boolean): void {
-    if (!note) return;
-    ensureHistory();
-    const now = Date.now();
-    if (!group || undoStack.length === 0 || now - lastEditAt > GROUP_MS) {
-      undoStack.push({ value: note.content });
-      if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  // L'historique propre à l'éditeur vit dans editor/history.ts : l'annulation
+  // native du champ ne couvre pas les modifications de la barre d'outils
+  // (écriture programmatique) et ne survit pas au rendu piloté par le store.
+  const history = new EditorHistory({
+    noteId: () => note?.id ?? '',
+    content: () => note?.content ?? '',
+    apply: (value) => updateSelected({ content: value }),
+    focus: (caret) => {
+      const el = contentEl;
+      if (!el) return;
+      void tick().then(() => {
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
     }
-    redoStack = [];
-    lastEditAt = now;
-  }
+  });
 
   /** Remplace le contenu en conservant une étape d'annulation. */
   function applyContent(next: string, group = false): void {
-    if (!note || next === note.content) return;
-    recordBeforeChange(group);
-    updateSelected({ content: next });
-  }
-
-  function restore(from: Snapshot[], to: Snapshot[]): void {
-    const el = contentEl;
-    if (!el || !note) return;
-    ensureHistory();
-    const target = from.pop();
-    if (!target) return;
-    const current = note.content;
-    to.push({ value: current });
-    updateSelected({ content: target.value });
-    lastEditAt = 0; // la frappe suivante ouvre une nouvelle étape
-
-    // Curseur placé à la fin de la zone modifiée.
-    let suffix = 0;
-    const max = Math.min(current.length, target.value.length);
-    while (suffix < max && current[current.length - 1 - suffix] === target.value[target.value.length - 1 - suffix]) {
-      suffix++;
-    }
-    const caret = target.value.length - suffix;
-    void tick().then(() => {
-      el.focus();
-      el.setSelectionRange(caret, caret);
-    });
+    history.applyContent(next, group);
   }
 
   function undo(): void {
-    restore(undoStack, redoStack);
+    history.undo();
   }
 
   function redo(): void {
-    restore(redoStack, undoStack);
+    history.redo();
   }
 
   /** Applique OU retire une mise en forme autour de la sélection (§3.4).
@@ -197,13 +166,6 @@
       el.focus();
       el.setSelectionRange(selStart, selEnd);
     });
-  }
-
-  /** Bornes des lignes touchées par la sélection courante. */
-  function selectedLines(content: string, start: number, end: number) {
-    const lineStart = start === 0 ? 0 : content.lastIndexOf('\n', start - 1) + 1;
-    const nextBreak = content.indexOf('\n', end);
-    return { lineStart, blockEnd: nextBreak === -1 ? content.length : nextBreak };
   }
 
   /** Ajoute — ou retire, si toutes les lignes de la sélection le portent
@@ -278,15 +240,7 @@
     if (!el || !note) return;
     const start = el.selectionStart ?? 0;
     const end = el.selectionEnd ?? start;
-    const cleaned = note.content
-      .slice(start, end)
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/==([^=]+)==/g, '$1')
-      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/^>\s?/gm, '')
-      .replace(/^\s*([-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/gm, '');
+    const cleaned = cleanFormatText(note.content.slice(start, end));
     const next = note.content.slice(0, start) + cleaned + note.content.slice(end);
     applyContent(next);
     void tick().then(() => {
@@ -372,9 +326,6 @@
 
   // --- pièces jointes locales (ADR-006) ---
 
-  /** Borne miroir du backend : refuser tôt évite un aller-retour inutile. */
-  const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-
   let imageInput = $state<HTMLInputElement | null>(null);
   let anyInput = $state<HTMLInputElement | null>(null);
   let titleEl = $state<HTMLInputElement | null>(null);
@@ -432,33 +383,6 @@
     };
   });
 
-  /** Extensions d'image reconnues localement : certaines WebView
-   *  laissent `File.type` vide. Le backend affine ensuite le type. */
-  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|avif|svgz?|ico|tiff?)$/i;
-
-  function looksLikeImage(file: File): boolean {
-    return file.type.startsWith('image/') || IMAGE_EXT.test(file.name);
-  }
-
-  /** Légende sûre pour un lien/une image Markdown. */
-  function altText(name: string): string {
-    return name.replace(/[[\]\n\r]/g, ' ').trim() || 'pièce jointe';
-  }
-
-  /** Lit un fichier en base64 (sans le préfixe data:). */
-  function readFileAsBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result ?? '');
-        const comma = result.indexOf(',');
-        resolve(comma >= 0 ? result.slice(comma + 1) : '');
-      };
-      reader.onerror = () => reject(reader.error ?? new Error('lecture impossible'));
-      reader.readAsDataURL(file);
-    });
-  }
-
   /** Importe des fichiers du PC comme pièces jointes de la note.
    *  En édition, la référence est insérée au curseur ; en aperçu, elle
    *  est ajoutée en fin de note et l'image apparaît aussitôt. */
@@ -501,14 +425,6 @@
     await importFiles(files, kind);
   }
 
-  /** Retire du texte les références Markdown à une pièce jointe : une
-   *  référence orpheline afficherait une image cassée dans l'aperçu. */
-  function stripAttachmentRefs(content: string, attachmentId: string): string {
-    const id = attachmentId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const reference = new RegExp(`!?\\[[^\\]]*\\]\\(attachment:${id}\\)`, 'g');
-    return content.replace(reference, '').replace(/[ \t]+\n/g, '\n');
-  }
-
   /** Supprime la pièce jointe confirmée, dans la base et dans le texte. */
   async function removeAttachment(): Promise<void> {
     const att = attachmentPendingDelete;
@@ -529,13 +445,6 @@
     } finally {
       attachBusy = false;
     }
-  }
-
-  /** Libellé court d'une pièce jointe : taille lisible, nom complet en info. */
-  function attachmentSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mio`;
-    if (bytes >= 1024) return `${Math.round(bytes / 1024)} Kio`;
-    return `${bytes} o`;
   }
 
   async function onFolderMove(e: Event) {
@@ -561,7 +470,9 @@
 
 <section class="editor">
   {#if !note}
-    {#if $filesOpen}
+    {#if $trashOpen}
+      <Trash />
+    {:else if $filesOpen}
       <Files />
     {:else}
       <Home />
@@ -861,9 +772,9 @@
 
 {#if pendingDelete && note}
   <ConfirmDialog
-    title="Supprimer cette note ?"
-    message={`« ${note.title || 'Sans titre'} » sera définitivement supprimée. Cette action est irréversible.`}
-    confirmLabel="Supprimer"
+    title="Mettre cette note à la corbeille ?"
+    message={`« ${note.title || 'Sans titre'} » sera déplacée à la corbeille : elle disparaît des listes et de la recherche, mais tout est conservé et la restauration est possible depuis « Corbeille ».`}
+    confirmLabel="Mettre à la corbeille"
     onconfirm={() => void onDelete()}
     oncancel={() => (pendingDelete = false)}
   />
