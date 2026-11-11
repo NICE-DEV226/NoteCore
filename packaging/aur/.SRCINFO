@@ -15,6 +15,6 @@ pkgbase = notecore
 	options = !lto
 	options = !debug
 	source = notecore-0.5.2.tar.gz::https://github.com/NICE-DEV226/NoteCore/archive/refs/tags/v0.5.2.tar.gz
-			sha256sums = fbad95e9cab1b8f9bc4041b042c8630c820a53a09de78fc948e9dcb23db4a181
+			sha256sums = 15b160f13ebc4a3aad6430a9b036d3dc15c56d4ae32b670c5401052dc55aade1
 
 pkgname = notecore

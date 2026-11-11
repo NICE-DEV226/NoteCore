@@ -15,7 +15,7 @@ depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
 optdepends=('xdg-utils: ouvrir les liens dans le navigateur')
 makedepends=('go' 'nodejs' 'npm')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('fbad95e9cab1b8f9bc4041b042c8630c820a53a09de78fc948e9dcb23db4a181')
+sha256sums=('15b160f13ebc4a3aad6430a9b036d3dc15c56d4ae32b670c5401052dc55aade1')
 # `!lto` : LTO n'apporte rien à un binaire Go lié via cgo. `!debug` :
 # inutile ici, le binaire Go ne se débogue pas avec les symboles séparés.
 options=('!lto' '!debug')
