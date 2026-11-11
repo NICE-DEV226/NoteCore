@@ -17,13 +17,11 @@
     createNote,
     expandedFolders,
     folderTree,
-    inboxCount,
     moveFolder,
     moveNotesTo,
     toggleFolder,
     currentView,
     deleteFolder,
-    favoritesCount,
     folderError,
     folders,
     goFiles,
@@ -54,6 +52,9 @@
   let editingFolderId = $state<string | null>(null);
   let folderEditName = $state('');
   let noteTemplatesOpen = $state(false);
+  /** Menus déroulants : création (＋) et données (Fichiers/Corbeille). */
+  let createMenuOpen = $state(false);
+  let dataMenuOpen = $state(false);
 
   let folderInput = $state<HTMLInputElement | null>(null);
   let folderRenameInput = $state<HTMLInputElement | null>(null);
@@ -201,11 +202,10 @@
     });
   }
 
-  const viewLabels = [
-    { kind: 'all', icon: 'notes', label: 'Toutes les notes' },
-    { kind: 'favorites', icon: 'star', label: 'Favoris' },
-    { kind: 'recent', icon: 'clock', label: 'Récentes' }
-  ] as const;
+  /** Vue « Notes » : toutes les listes de notes, filtrées dans la liste. */
+  function goNotes(): void {
+    currentView.set({ kind: 'all' });
+  }
 
   function toggleTheme(): void {
     setThemePref($theme.theme === 'dark' ? 'light' : 'dark');
@@ -239,6 +239,33 @@
       <button class="rail-btn" title="Réviser les cartes dues" aria-label="Réviser" onclick={() => void startReview()}>
         <Icon name="layers" size={16} />
       </button>
+      <button
+        class="rail-btn"
+        class:active={$filesOpen || $trashOpen}
+        title="Données — fichiers et corbeille"
+        aria-label="Données"
+        aria-haspopup="menu"
+        aria-expanded={dataMenuOpen}
+        onclick={() => (dataMenuOpen = !dataMenuOpen)}
+      >
+        <Icon name="database" size={16} />
+      </button>
+      {#if dataMenuOpen}
+        <div class="menu-backdrop" role="presentation" onclick={() => (dataMenuOpen = false)}></div>
+        <div class="menu menu-rail" role="menu">
+          <button role="menuitem" class:active={$filesOpen} onclick={() => { dataMenuOpen = false; void goFiles(); }}>
+            <Icon name="paperclip" size={15} />
+            <span>Fichiers joints</span>
+          </button>
+          <button role="menuitem" class:active={$trashOpen} onclick={() => { dataMenuOpen = false; void goTrash(); }}>
+            <Icon name="trash" size={15} />
+            <span>Corbeille</span>
+            {#if $trashedNotes.length > 0}
+              <span class="count">{$trashedNotes.length}</span>
+            {/if}
+          </button>
+        </div>
+      {/if}
       <span class="rail-gap"></span>
       <button class="rail-btn" title="Paramètres — Ctrl+," aria-label="Paramètres" onclick={() => settingsOpen.set(true)}>
         <Icon name="settings" size={16} />
@@ -269,33 +296,47 @@
     </div>
 
     <div class="top">
-      <button
-        class="new-note"
-        title="Créer une note — Ctrl+N"
-        aria-keyshortcuts="Control+N Meta+N"
-        onclick={() => void createNote($currentView.kind === 'folder' ? $currentView.folderId : null)}
-      >
-        <Icon name="plus" size={15} stroke={2.2} />
-        Nouvelle note
-      </button>
+      <div class="create-wrap">
+        <button
+          class="new-note"
+          title="Créer — Ctrl+N"
+          aria-keyshortcuts="Control+N Meta+N"
+          aria-haspopup="menu"
+          aria-expanded={createMenuOpen}
+          onclick={() => (createMenuOpen = !createMenuOpen)}
+        >
+          <Icon name="plus" size={15} stroke={2.2} />
+          Nouvelle note
+          <Icon name="chevron-down" size={13} />
+        </button>
+        {#if createMenuOpen}
+          <div class="menu-backdrop" role="presentation" onclick={() => (createMenuOpen = false)}></div>
+          <div class="menu" role="menu">
+            <button
+              role="menuitem"
+              onclick={() => { createMenuOpen = false; void createNote($currentView.kind === 'folder' ? $currentView.folderId : null); }}
+            >
+              <Icon name="edit" size={15} />
+              <span>Note vierge<small>Ctrl+N</small></span>
+            </button>
+            <button
+              role="menuitem"
+              onclick={() => { createMenuOpen = false; void createDailyNote(); }}
+            >
+              <Icon name="clock" size={15} />
+              <span>Note du jour<small>Journal quotidien</small></span>
+            </button>
+            <button
+              role="menuitem"
+              onclick={() => { createMenuOpen = false; noteTemplatesOpen = true; }}
+            >
+              <Icon name="layout" size={15} />
+              <span>À partir d'un modèle<small>Compte rendu, TP, séance…</small></span>
+            </button>
+          </div>
+        {/if}
+      </div>
 
-      <button
-        class="new-note daily"
-        title="Ouvrir (ou créer) la note du jour"
-        onclick={() => void createDailyNote()}
-      >
-        <Icon name="clock" size={15} />
-        Aujourd'hui
-      </button>
-
-      <button
-        class="new-note daily"
-        title="Créer une note à partir d'un modèle (compte rendu, TP, séance…)"
-        onclick={() => (noteTemplatesOpen = true)}
-      >
-        <Icon name="layout" size={15} />
-        Modèles
-      </button>
       <button
         class="finder"
         title="Rechercher et exécuter des commandes"
@@ -321,26 +362,12 @@
         </button>
         <button
           class="nav-item"
-          class:active={$filesOpen && $selectedNoteId === null}
-          aria-current={$filesOpen && $selectedNoteId === null ? 'page' : undefined}
-          title="Parcourir tous les fichiers joints"
-          onclick={() => void goFiles()}
+          class:active={['all', 'favorites', 'recent', 'inbox'].includes($currentView.kind) && !$filesOpen && !$trashOpen}
+          title="Toutes les notes — les filtres (récentes, favoris, à classer) sont dans la liste"
+          onclick={goNotes}
         >
-          <Icon name="paperclip" size={16} />
-          <span class="nav-label">Fichiers</span>
-        </button>
-        <button
-          class="nav-item"
-          class:active={$trashOpen && $selectedNoteId === null}
-          aria-current={$trashOpen && $selectedNoteId === null ? 'page' : undefined}
-          title="Notes mises de côté : restauration ou suppression définitive"
-          onclick={() => void goTrash()}
-        >
-          <Icon name="trash" size={16} />
-          <span class="nav-label">Corbeille</span>
-          {#if $trashedNotes.length > 0}
-            <span class="count">{$trashedNotes.length}</span>
-          {/if}
+          <Icon name="notes" size={16} />
+          <span class="nav-label">Notes</span>
         </button>
         <button
           class="nav-item review"
@@ -353,33 +380,6 @@
             <span class="due" aria-label="cartes à voir">{($reviewStats?.due ?? 0) + ($reviewStats?.new ?? 0)}</span>
           {/if}
         </button>
-        {#if $inboxCount > 0}
-          <button
-            class="nav-item"
-            class:active={isActive($currentView, 'inbox') && $selectedNoteId !== null}
-            class:current-view={isActive($currentView, 'inbox')}
-            aria-current={isActive($currentView, 'inbox') ? 'page' : undefined}
-            title="Notes sans dossier, avec des propositions de rangement"
-            onclick={() => currentView.set({ kind: 'inbox' })}
-          >
-            <Icon name="inbox" size={16} />
-            <span class="nav-label">À classer</span>
-            <span class="count todo">{$inboxCount}</span>
-          </button>
-        {/if}
-        {#each viewLabels as item (item.kind)}
-          <button
-            class="nav-item"
-            class:active={isActive($currentView, item.kind) && $selectedNoteId !== null}
-            class:current-view={isActive($currentView, item.kind)}
-            aria-current={isActive($currentView, item.kind) ? 'page' : undefined}
-            onclick={() => currentView.set({ kind: item.kind })}
-          >
-            <Icon name={item.icon} size={16} />
-            <span class="nav-label">{item.label}</span>
-            <span class="count">{item.kind === 'favorites' ? $favoritesCount : $notes.length}</span>
-          </button>
-        {/each}
       </nav>
 
       <div class="section">
@@ -569,9 +569,46 @@
     </div>
 
     <div class="footer">
-      <button class="footer-btn grow" onclick={() => settingsOpen.set(true)} title="Paramètres — Ctrl+,">
+      <div class="data-wrap">
+        <button
+          class="footer-btn grow"
+          aria-haspopup="menu"
+          aria-expanded={dataMenuOpen}
+          class:active={$filesOpen || $trashOpen}
+          onclick={() => (dataMenuOpen = !dataMenuOpen)}
+          title="Fichiers joints et corbeille"
+        >
+          <Icon name="database" size={16} />
+          Données
+          <Icon name="chevron-up" size={13} />
+        </button>
+        {#if dataMenuOpen}
+          <div class="menu-backdrop" role="presentation" onclick={() => (dataMenuOpen = false)}></div>
+          <div class="menu menu-up" role="menu">
+            <button
+              role="menuitem"
+              class:active={$filesOpen}
+              onclick={() => { dataMenuOpen = false; void goFiles(); }}
+            >
+              <Icon name="paperclip" size={15} />
+              <span>Fichiers joints</span>
+            </button>
+            <button
+              role="menuitem"
+              class:active={$trashOpen}
+              onclick={() => { dataMenuOpen = false; void goTrash(); }}
+            >
+              <Icon name="trash" size={15} />
+              <span>Corbeille</span>
+              {#if $trashedNotes.length > 0}
+                <span class="count">{$trashedNotes.length}</span>
+              {/if}
+            </button>
+          </div>
+        {/if}
+      </div>
+      <button class="footer-btn" onclick={() => settingsOpen.set(true)} title="Paramètres — Ctrl+,">
         <Icon name="settings" size={16} />
-        Paramètres
       </button>
       <button
         class="footer-btn"
@@ -649,6 +686,7 @@
 
   /* Rail replié : colonne d'icônes, mêmes actions essentielles. */
   .rail {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -829,9 +867,6 @@
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     text-align: right;
-  }
-  .nav-item.active .count {
-    color: var(--accent-text);
   }
 
   .section {
@@ -1070,5 +1105,94 @@
   .footer-btn:hover {
     background: var(--hover);
     color: var(--text);
+  }
+  .footer-btn.active {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+  }
+
+  /* --- menus déroulants (création, données) ---------------------------- */
+  .create-wrap,
+  .data-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+  .create-wrap .new-note {
+    width: 100%;
+  }
+  .create-wrap .new-note :global(svg:last-child) {
+    margin-left: auto;
+    opacity: 0.75;
+  }
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .menu {
+    position: absolute;
+    z-index: 41;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow, 0 4px 16px rgb(0 0 0 / 0.14));
+  }
+  .menu.menu-up {
+    top: auto;
+    bottom: calc(100% + 4px);
+  }
+  /* Menu ouvert depuis le rail : il sort à droite de la barre. */
+  .menu.menu-rail {
+    top: auto;
+    bottom: 0;
+    left: calc(100% + 6px);
+    right: auto;
+    min-width: 11rem;
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0.55rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.84rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu button:hover {
+    background: var(--hover);
+  }
+  .menu button.active {
+    color: var(--accent-text);
+    background: var(--accent-soft);
+  }
+  .menu button span {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .menu button small {
+    color: var(--text-faint);
+    font-size: 0.7rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .menu .count {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--text-faint);
   }
 </style>
