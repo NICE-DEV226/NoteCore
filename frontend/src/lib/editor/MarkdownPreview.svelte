@@ -3,9 +3,23 @@
   import { api } from '../api/client';
 
   /** Contenu Markdown brut de la note. */
-  let { content = '' } = $props();
+  let { content = '' }: { content?: string } = $props();
 
-  const html = $derived(renderMarkdown(content));
+  // Le rendu reparse tout le document : on attend une courte pause de
+  // frappe avant de relancer le moteur, pour que l'aperçu suive sans
+  // recalculer à chaque touche (notes longues).
+  let debounced = $state<string | undefined>(undefined);
+  $effect(() => {
+    const c = content;
+    if (debounced === undefined || c === debounced) {
+      debounced = c;
+      return;
+    }
+    const timer = setTimeout(() => (debounced = c), 120);
+    return () => clearTimeout(timer);
+  });
+
+  const html = $derived(renderMarkdown(debounced ?? content));
 
   let container = $state<HTMLElement | null>(null);
 
@@ -23,9 +37,9 @@
     return span;
   }
 
-  // Après chaque rendu : on résout les images de pièces jointes depuis le
-  // backend (les octets ne sont pas dans le Markdown). Une pièce jointe
-  // n'est rendue en image que si son type est bien `image/*` (ADR-006).
+  // Après chaque rendu : on résout les images de pièces jointes depuis le backend (les
+  // octets ne sont pas dans le Markdown). Une pièce jointe n'est rendue
+  // en image que si son type est bien `image/*` (ADR-006).
   $effect(() => {
     void html; // rejouer quand le rendu change
     const root = container;

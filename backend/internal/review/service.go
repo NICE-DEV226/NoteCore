@@ -360,7 +360,7 @@ func (s *Service) Next(ctx context.Context) (*CardView, error) {
 		}
 		row := s.db.QueryRowContext(ctx,
 			`SELECT `+cardColumns+` FROM cards c JOIN notes n ON n.id = c.note_id
-			  WHERE c.orphaned_at IS NULL AND `+q.where+` ORDER BY `+order+` LIMIT 1`, q.args...)
+			  WHERE c.orphaned_at IS NULL AND n.deleted_at IS NULL AND `+q.where+` ORDER BY `+order+` LIMIT 1`, q.args...)
 		c, err := scanCard(row)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
@@ -510,11 +510,12 @@ func (s *Service) Stats(ctx context.Context) (Stats, error) {
 	var learning, reviews, fresh int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-		  COALESCE(SUM(CASE WHEN state IN (1,3) AND due <= ? THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN state = 2 AND due <= ? THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN state = 0 THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.state IN (1,3) AND c.due <= ? THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.state = 2 AND c.due <= ? THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN c.state = 0 THEN 1 ELSE 0 END), 0),
 		  COUNT(*)
-		FROM cards WHERE orphaned_at IS NULL`,
+		FROM cards c JOIN notes n ON n.id = c.note_id
+		WHERE c.orphaned_at IS NULL AND n.deleted_at IS NULL`,
 		now.Add(learnAhead).Format(tsFormat), endOfDay(now).Format(tsFormat)).
 		Scan(&learning, &reviews, &fresh, &st.Total)
 	if err != nil {
@@ -601,7 +602,7 @@ func (s *Service) Mastery(ctx context.Context) ([]MasteryRow, error) {
 		  FROM cards c
 		  JOIN notes n ON n.id = c.note_id
 		  LEFT JOIN folders f ON f.id = n.folder_id
-		 WHERE c.orphaned_at IS NULL`)
+		 WHERE c.orphaned_at IS NULL AND n.deleted_at IS NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("maîtrise : %w", err)
 	}

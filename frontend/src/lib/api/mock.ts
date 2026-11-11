@@ -399,7 +399,45 @@ function mockSuggest(noteId: string, limit: number): FolderSuggestion[] {
 export const mockApi: NoteCoreApi = {
   async listNotes() {
     await delay();
-    return seed.notes.map((n) => ({ ...n, tags: [...n.tags] }));
+    return seed.notes
+      .filter((n) => !n.deletedAt)
+      .map((n) => ({ ...n, tags: [...n.tags] }));
+  },
+
+  async listTrashedNotes() {
+    await delay();
+    return seed.notes
+      .filter((n) => n.deletedAt)
+      .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''))
+      .map((n) => ({ ...n, tags: [...n.tags] }));
+  },
+
+  async restoreNote(id) {
+    await delay();
+    const n = seed.notes.find((x) => x.id === id);
+    if (!n?.deletedAt) throw new Error('note introuvable dans la corbeille');
+    delete n.deletedAt;
+    return { ...n, tags: [...n.tags] };
+  },
+
+  async deleteNoteForever(id) {
+    await delay();
+    const idx = seed.notes.findIndex((n) => n.id === id);
+    if (idx !== -1) seed.notes.splice(idx, 1);
+    // Cascade : les pièces jointes de la note disparaissent.
+    for (let i = attachments.length - 1; i >= 0; i--) {
+      if (attachments[i].noteId === id) attachments.splice(i, 1);
+    }
+  },
+
+  async emptyTrash() {
+    await delay();
+    const doomed = new Set(seed.notes.filter((n) => n.deletedAt).map((n) => n.id));
+    seed.notes = seed.notes.filter((n) => !n.deletedAt);
+    for (let i = attachments.length - 1; i >= 0; i--) {
+      if (doomed.has(attachments[i].noteId)) attachments.splice(i, 1);
+    }
+    return doomed.size;
   },
 
   async listFolders() {
@@ -431,12 +469,11 @@ export const mockApi: NoteCoreApi = {
 
   async deleteNote(id) {
     await delay();
-    const idx = seed.notes.findIndex((n) => n.id === id);
-    if (idx !== -1) seed.notes.splice(idx, 1);
-    // Cascade (ADR-006) : les pièces jointes de la note disparaissent.
-    for (let i = attachments.length - 1; i >= 0; i--) {
-      if (attachments[i].noteId === id) attachments.splice(i, 1);
-    }
+    // Corbeille : la note est mise de côté, rien n'est détruit — ses
+    // pièces jointes et ses cartes la suivent jusqu'à la suppression
+    // définitive (deleteNoteForever / emptyTrash).
+    const n = seed.notes.find((x) => x.id === id);
+    if (n && !n.deletedAt) n.deletedAt = minutesAgo(0);
   },
 
   async createFolder(name, parentId) {

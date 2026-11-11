@@ -39,7 +39,22 @@ export interface NoteCoreApi {
 
   createNote(data: { title?: string; folderId?: string | null }): Promise<Note>;
   updateNote(id: string, patch: NotePatch): Promise<Note>;
+  /**
+   * Met la note à la corbeille : elle disparaît des listes et de la
+   * recherche mais n'est pas détruite (rien n'est perdu, §3.1).
+   */
   deleteNote(id: string): Promise<void>;
+
+  // --- corbeille ---
+
+  /** Notes mises de côté, en attente de restauration ou de destruction. */
+  listTrashedNotes(): Promise<Note[]>;
+  /** Sort une note de la corbeille, avec tout ce qu'elle contenait. */
+  restoreNote(id: string): Promise<Note>;
+  /** Détruit définitivement une note de la corbeille (pièces jointes et cartes comprises). */
+  deleteNoteForever(id: string): Promise<void>;
+  /** Vide la corbeille ; renvoie le nombre de notes détruites. */
+  emptyTrash(): Promise<number>;
 
   /** Crée un dossier, à la racine ou dans `parentId` (dossiers imbriqués, ADR-009). */
   createFolder(name: string, parentId?: string | null): Promise<Folder>;

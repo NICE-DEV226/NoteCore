@@ -134,6 +134,10 @@ func Build(ctx context.Context, svc *notes.Service, sel Selection, format Format
 		return Package{}, errors.New("aucune note à partager")
 	}
 
+	if err := checkAttachmentBudget(ctx, svc, chosen); err != nil {
+		return Package{}, err
+	}
+
 	var data []byte
 	var attCount int
 	switch format {
@@ -163,6 +167,27 @@ func Build(ctx context.Context, svc *notes.Service, sel Selection, format Format
 		return Package{}, fmt.Errorf("paquet trop volumineux (maximum %d Mio)", MaxPackageBytes>>20)
 	}
 	return pkg, nil
+}
+
+// checkAttachmentBudget refuse le paquet AVANT de charger la moindre
+// pièce jointe : les tailles sont lues en métadonnées seules (une ligne
+// par pièce jointe), donc le pic mémoire reste borné par MaxPackageBytes
+// au lieu de dépendre du volume total stocké en base.
+func checkAttachmentBudget(ctx context.Context, svc *notes.Service, chosen []notes.Note) error {
+	var total int64
+	for _, n := range chosen {
+		list, err := svc.ListAttachments(ctx, n.ID)
+		if err != nil {
+			return err
+		}
+		for _, a := range list {
+			total += a.Size
+			if total > MaxPackageBytes {
+				return fmt.Errorf("pièces jointes trop volumineuses pour un paquet (maximum %d Mio)", MaxPackageBytes>>20)
+			}
+		}
+	}
+	return nil
 }
 
 func loadAssets(ctx context.Context, svc *notes.Service, noteID string) ([]notes.Attachment, [][]byte, error) {

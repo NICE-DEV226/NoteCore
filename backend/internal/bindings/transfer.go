@@ -13,9 +13,15 @@ import (
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"notecore/backend/internal/notes"
 	"notecore/backend/internal/storage"
 	"notecore/backend/internal/transfer"
 )
+
+// exportBudgetBytes borne le volume de pièces jointes chargées en mémoire
+// pour un export multi-notes (même ordre de grandeur que les paquets de
+// partage : 256 Mio).
+const exportBudgetBytes = 256 << 20
 
 // --- export ----------------------------------------------------------
 
@@ -30,6 +36,9 @@ func (n *NoteCore) ExportNote(id string) (bool, error) {
 	}
 	note, err := n.svc.GetNote(n.callContext(), id)
 	if err != nil {
+		return false, err
+	}
+	if err := checkExportBudget(n, note.ID); err != nil {
 		return false, err
 	}
 	assets, err := n.exportAssetsFor(note.ID)
@@ -72,6 +81,14 @@ func (n *NoteCore) ExportAllNotes() (bool, error) {
 		return false, fmt.Errorf("aucune note à exporter")
 	}
 
+	// Contrôle pré-vol : les tailles des pièces jointes sont lues en
+	// métadonnées seules, AVANT de charger le moindre octet en mémoire.
+	// Sans cette borne, un export de grosses pièces jointes chargerait
+	// tout en RAM avant même de découvrir que l'archive est trop grosse.
+	if err := checkExportBudgetIDs(n, list); err != nil {
+		return false, err
+	}
+
 	assetsByNote := make(map[string][]transfer.ExportAsset, len(list))
 	for _, note := range list {
 		assets, err := n.exportAssetsFor(note.ID)
@@ -109,6 +126,41 @@ func (n *NoteCore) ExportAllNotes() (bool, error) {
 		return false, fmt.Errorf("écriture de l'archive : %w", err)
 	}
 	return true, nil
+}
+
+// checkExportBudget refuse l'export d'une note si ses pièces jointes
+// dépassent la borne, en lisant les tailles seules (métadonnées) : le pic
+// mémoire reste borné au lieu de dépendre du volume stocké en base.
+func checkExportBudget(n *NoteCore, noteID string) error {
+	atts, err := n.svc.ListAttachments(n.callContext(), noteID)
+	if err != nil {
+		return err
+	}
+	var total int64
+	for _, a := range atts {
+		total += a.Size
+	}
+	if total > exportBudgetBytes {
+		return fmt.Errorf("pièces jointes trop volumineuses pour un export (maximum %d Mio)", exportBudgetBytes>>20)
+	}
+	return nil
+}
+
+func checkExportBudgetIDs(n *NoteCore, list []notes.Note) error {
+	var total int64
+	for _, note := range list {
+		atts, err := n.svc.ListAttachments(n.callContext(), note.ID)
+		if err != nil {
+			return err
+		}
+		for _, a := range atts {
+			total += a.Size
+			if total > exportBudgetBytes {
+				return fmt.Errorf("pièces jointes trop volumineuses pour un export (maximum %d Mio)", exportBudgetBytes>>20)
+			}
+		}
+	}
+	return nil
 }
 
 // exportAssetsFor rassemble les octets des pièces jointes d'une note.

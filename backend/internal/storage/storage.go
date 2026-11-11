@@ -199,6 +199,17 @@ DROP INDEX IF EXISTS idx_folders_name;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_parent_name ON folders(COALESCE(parent_id, ''), name COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
 `},
+	{version: 5, sql: `
+-- Corbeille : une note supprimée est mise de côté, pas détruite — ses
+-- pièces jointes et ses cartes de révision la suivent (ON DELETE CASCADE
+-- ne joue qu'à la suppression définitive). NULL = note active ; une date
+-- RFC 3339 = mise à la corbeille à cet instant.
+ALTER TABLE notes ADD COLUMN deleted_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_notes_deleted_at ON notes(deleted_at) WHERE deleted_at IS NOT NULL;
+-- « Cartes introduites aujourd'hui » lit MIN(reviewed_at) par carte :
+-- l'index composite rend la recherche du premier passage immédiate.
+CREATE INDEX IF NOT EXISTS idx_review_log_card_at ON review_log(card_id, reviewed_at);
+`},
 }
 
 // SchemaVersion renvoie la version de schéma courante — information

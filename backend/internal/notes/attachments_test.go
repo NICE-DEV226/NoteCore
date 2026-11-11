@@ -78,11 +78,21 @@ func TestPieceJointeSupprimeeAvecLaNote(t *testing.T) {
 		t.Fatalf("ajout : %v", err)
 	}
 
+	// La mise à la corbeille n'efface rien : la pièce jointe reste
+	// lisible pour que la restauration soit complète.
 	if err := svc.DeleteNote(ctx, n.ID); err != nil {
-		t.Fatalf("suppression note : %v", err)
+		t.Fatalf("mise à la corbeille : %v", err)
+	}
+	if _, err := svc.GetAttachmentData(ctx, a.ID); err != nil {
+		t.Error("la pièce jointe a disparu avant la suppression définitive")
+	}
+
+	// Seule la suppression définitive, depuis la corbeille, la détruit.
+	if err := svc.DeleteNoteForever(ctx, n.ID); err != nil {
+		t.Fatalf("suppression définitive : %v", err)
 	}
 	if _, err := svc.GetAttachmentData(ctx, a.ID); err == nil {
-		t.Error("la pièce jointe survit à la suppression de sa note")
+		t.Error("la pièce jointe survit à la suppression définitive de sa note")
 	}
 }
 

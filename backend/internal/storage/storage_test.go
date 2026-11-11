@@ -91,8 +91,10 @@ func TestMigrationConserveLaBasePrecedente(t *testing.T) {
 		t.Fatalf("insertion : %v", err)
 	}
 	// Recule la base à l'état d'une installation antérieure.
-	// Schéma 4 : on retire aussi les dossiers imbriqués (colonne et index).
+	// Schéma 5 : on retire la corbeille et son index avant le schéma 4.
 	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_notes_deleted_at`,
+		`ALTER TABLE notes DROP COLUMN deleted_at`,
 		`DROP INDEX IF EXISTS idx_folders_parent_name`,
 		`DROP INDEX IF EXISTS idx_folders_parent`,
 		`ALTER TABLE folders DROP COLUMN parent_id`,

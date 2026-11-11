@@ -26,12 +26,15 @@
     folders,
     goFiles,
     goHome,
+    goTrash,
     loaded,
     notes,
     renameFolder,
     restoreBackup,
     restorePreview,
-    selectedNoteId
+    selectedNoteId,
+    trashOpen,
+    trashedNotes
   } from '../stores/workspace';
   import { dragging, folderPicker, paletteOpen, settingsOpen, templateDialog } from '../stores/ui';
   import { canDropFolder, subtreeIds, visibleNodes } from '../utils/folders';
@@ -241,8 +244,8 @@
       <nav class="nav" aria-label="Navigation">
         <button
           class="nav-item"
-          class:active={$selectedNoteId === null && !$filesOpen}
-          aria-current={$selectedNoteId === null && !$filesOpen ? 'page' : undefined}
+          class:active={$selectedNoteId === null && !$filesOpen && !$trashOpen}
+          aria-current={$selectedNoteId === null && !$filesOpen && !$trashOpen ? 'page' : undefined}
           onclick={() => void goHome()}
         >
           <Icon name="home" size={16} />
@@ -257,6 +260,19 @@
         >
           <Icon name="paperclip" size={16} />
           <span class="nav-label">Fichiers</span>
+        </button>
+        <button
+          class="nav-item"
+          class:active={$trashOpen && $selectedNoteId === null}
+          aria-current={$trashOpen && $selectedNoteId === null ? 'page' : undefined}
+          title="Notes mises de côté : restauration ou suppression définitive"
+          onclick={() => void goTrash()}
+        >
+          <Icon name="trash" size={16} />
+          <span class="nav-label">Corbeille</span>
+          {#if $trashedNotes.length > 0}
+            <span class="count">{$trashedNotes.length}</span>
+          {/if}
         </button>
         <button
           class="nav-item review"
@@ -570,6 +586,7 @@
   .new-note:active {
     transform: translateY(1px);
   }
+
 
   .finder {
     display: flex;

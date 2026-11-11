@@ -455,3 +455,137 @@ func TestEpinglageConserveLaDateDeModification(t *testing.T) {
 		t.Error("une modification du contenu doit mettre à jour la date")
 	}
 }
+
+// Corbeille : une note supprimée disparaît de tout mais garde son contenu ;
+// la restauration est complète ; seule la suppression définitive détruit.
+func TestCorbeilleCycleComplet(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	n, err := svc.CreateNote(ctx, "note à mettre de côté", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "contenu avec un mot recherché"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &body}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatalf("mise à la corbeille : %v", err)
+	}
+
+	// Absente des listes et de la recherche, présente à la corbeille.
+	if got, _ := svc.ListNotes(ctx); len(got) != 0 {
+		t.Errorf("une note à la corbeille reste dans les notes actives : %d", len(got))
+	}
+	if res, _ := svc.SearchNotes(ctx, "recherché"); len(res) != 0 {
+		t.Errorf("une note à la corbeille est encore trouvée : %d résultat(s)", len(res))
+	}
+	trashed, err := svc.ListTrashed(ctx)
+	if err != nil || len(trashed) != 1 || trashed[0].ID != n.ID {
+		t.Fatalf("corbeille = %+v, err=%v", trashed, err)
+	}
+	if trashed[0].DeletedAt == nil {
+		t.Error("la note à la corbeille n'a pas de date de mise de côté")
+	}
+
+	// Restauration : même note, même contenu, redevenue active.
+	restored, err := svc.RestoreNote(ctx, n.ID)
+	if err != nil {
+		t.Fatalf("restauration : %v", err)
+	}
+	if restored.Content != body || restored.DeletedAt != nil {
+		t.Errorf("restauration incomplète : %+v", restored)
+	}
+	if res, _ := svc.SearchNotes(ctx, "recherché"); len(res) != 1 {
+		t.Errorf("la note restaurée n'est pas de nouveau trouvée : %d", len(res))
+	}
+
+	// Mise de côté à nouveau, puis suppression définitive.
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNoteForever(ctx, n.ID); err != nil {
+		t.Fatalf("suppression définitive : %v", err)
+	}
+	if got, _ := svc.ListTrashed(ctx); len(got) != 0 {
+		t.Errorf("la note détruite reste à la corbeille : %d", len(got))
+	}
+	if _, err := svc.GetNote(ctx, n.ID); err == nil {
+		t.Error("la note détruite reste lisible")
+	}
+}
+
+// Vidage : EmptyTrash détruit tout ce qui est à la corbeille et ne touche
+// pas les notes actives.
+func TestViderLaCorbeille(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	active, err := svc.CreateNote(ctx, "garder", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trashed, err := svc.CreateNote(ctx, "jeter", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNote(ctx, trashed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := svc.EmptyTrash(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("EmptyTrash = %d, err=%v", n, err)
+	}
+	got, _ := svc.ListNotes(ctx)
+	if len(got) != 1 || got[0].ID != active.ID {
+		t.Errorf("notes actives après vidage = %+v", got)
+	}
+}
+
+// Purge : seules les notes à la corbeille depuis plus longtemps que la
+// rétention sont détruites ; une durée nulle purge tout ce qui est plus
+// vieux que l'instant présent.
+func TestPurgeCorbeilleParAnciennete(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	old, err := svc.CreateNote(ctx, "vieille", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNote(ctx, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Une rétention négative place la coupure dans le futur : la note est
+	// « trop vieille » et doit être détruite.
+	n, err := svc.PurgeTrash(ctx, -time.Hour)
+	if err != nil || n != 1 {
+		t.Fatalf("purge = %d, err=%v", n, err)
+	}
+	if got, _ := svc.ListTrashed(ctx); len(got) != 0 {
+		t.Errorf("la note trop vieille reste à la corbeille : %+v", got)
+	}
+
+	fresh, err := svc.CreateNote(ctx, "récente", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNote(ctx, fresh.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err = svc.PurgeTrash(ctx, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("purge 30 j : %v", err)
+	}
+	if n != 0 {
+		t.Errorf("%d note(s) trop récente(s) purgée(s)", n)
+	}
+	if got, _ := svc.ListTrashed(ctx); len(got) != 1 || got[0].ID != fresh.ID {
+		t.Errorf("corbeille après purge = %+v", got)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
