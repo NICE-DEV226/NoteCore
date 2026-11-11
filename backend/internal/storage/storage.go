@@ -224,6 +224,19 @@ CREATE TABLE IF NOT EXISTS note_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, created_at);
 `},
+	{version: 7, sql: `
+-- Index FTS des pièces jointes texte : le contenu des .txt/.md/.csv…
+-- devient cherchable comme le texte des notes. Table dérivée, tenue à
+-- jour dans les mêmes transactions que les pièces jointes ; les
+-- pièces jointes binaires (images, PDF) n'y entrent jamais.
+CREATE VIRTUAL TABLE IF NOT EXISTS attachments_fts USING fts5(
+	filename,
+	content,
+	note_id UNINDEXED,
+	attachment_id UNINDEXED,
+	tokenize='unicode61 remove_diacritics 1'
+);
+`},
 }
 
 // SchemaVersion renvoie la version de schéma courante — information

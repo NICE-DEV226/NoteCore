@@ -87,6 +87,13 @@ func run() error {
 		log.Printf("corbeille : %d note(s) conservée(s) depuis plus de 30 jours, détruite(s)", n)
 	}
 
+	// Pièces jointes texte : indexe celles ajoutées avant la v7. La table
+	// est dérivée et reconstruisible — une panne est journalisée, jamais
+	// bloquante.
+	if err := api.IndexAttachmentTexts(context.Background()); err != nil {
+		log.Printf("pièces jointes : indexation impossible : %v", err)
+	}
+
 	return wails.Run(&options.App{
 		Title:  "NoteCore",
 		Width:  1024,

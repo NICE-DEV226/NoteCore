@@ -43,6 +43,8 @@ export interface DisplayPrefs {
   density: DensityChoice;
   radius: RadiusChoice;
   spellcheck: boolean;
+  /** Rend les formules $…$ / $$…$$ en notation mathématique (KaTeX) dans l'aperçu. */
+  latex: boolean;
 }
 
 export const DEFAULTS: DisplayPrefs = {
@@ -61,7 +63,8 @@ export const DEFAULTS: DisplayPrefs = {
   accentHue: 275,
   density: 'comfortable',
   radius: 'soft',
-  spellcheck: true
+  spellcheck: true,
+  latex: false
 };
 
 /** Bornes de chaque réglage numérique : l'interface et la lecture s'y tiennent. */
@@ -158,7 +161,8 @@ export function sanitize(raw: unknown, base: DisplayPrefs = DEFAULTS): DisplayPr
     accentHue: num('accentHue'),
     density: o.density === 'compact' || o.density === 'comfortable' ? o.density : base.density,
     radius: o.radius === 'sharp' || o.radius === 'soft' || o.radius === 'round' ? o.radius : base.radius,
-    spellcheck: typeof o.spellcheck === 'boolean' ? o.spellcheck : base.spellcheck
+    spellcheck: typeof o.spellcheck === 'boolean' ? o.spellcheck : base.spellcheck,
+    latex: typeof o.latex === 'boolean' ? o.latex : base.latex
   };
 }
 
