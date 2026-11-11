@@ -58,6 +58,9 @@
   let newPerDay = $state(20);
   let retention = $state(90);
   let reviewMsg = $state('');
+  // Notifications OS des révisions dues : réglage lu par le backend à
+  // chaque passage ("0" = muet), absent = activé.
+  let reviewNotify = $state(true);
 
   $effect(() => {
     if (tab !== 'review') return;
@@ -65,7 +68,69 @@
       newPerDay = s.newPerDay;
       retention = Math.round(s.retention * 100);
     });
+    void api
+      .getSettings()
+      .then((all) => (reviewNotify = all['reviewNotifications'] !== '0'))
+      .catch(() => undefined);
   });
+
+  async function saveReviewNotify(on: boolean): Promise<void> {
+    reviewNotify = on;
+    try {
+      await api.setSetting('reviewNotifications', on ? '1' : '0');
+    } catch (err) {
+      reviewNotify = !on;
+      reviewMsg = err instanceof Error ? err.message : 'Réglage refusé.';
+    }
+  }
+
+  // --- export Markdown : miroir unidirectionnel vers un dossier ---
+  let exportDir = $state('');
+  let exportMsg = $state('');
+
+  $effect(() => {
+    if (tab !== 'data') return;
+    void api.markdownExportDir().then((d) => (exportDir = d)).catch(() => undefined);
+  });
+
+  async function pickExportDir(): Promise<void> {
+    exportMsg = '';
+    try {
+      const dir = await api.chooseMarkdownExportDir();
+      if (dir) exportDir = dir;
+    } catch (err) {
+      exportMsg = err instanceof Error ? err.message : 'Choix impossible.';
+    }
+  }
+
+  // --- vérification de mise à jour (Internet requis, jamais bloquant) ---
+  let updateMsg = $state('');
+  let updateBusy = $state(false);
+
+  async function runUpdateCheck(): Promise<void> {
+    updateBusy = true;
+    updateMsg = '';
+    try {
+      const info = await api.checkForUpdate();
+      updateMsg = info.available
+        ? `NoteCore ${info.latest} est disponible — la version ${info.current} est installée.`
+        : `Vous avez la dernière version (${info.current}).`;
+    } catch {
+      updateMsg = 'Vérification impossible : pas de connexion ou service injoignable.';
+    } finally {
+      updateBusy = false;
+    }
+  }
+
+  async function disableExportDir(): Promise<void> {
+    exportMsg = '';
+    try {
+      await api.setMarkdownExportDir('');
+      exportDir = '';
+    } catch (err) {
+      exportMsg = err instanceof Error ? err.message : 'Action impossible.';
+    }
+  }
 
   async function saveReview(): Promise<void> {
     reviewMsg = '';
@@ -409,6 +474,24 @@
             La rétention visée est la probabilité de se souvenir d'une carte au moment où elle revient.
             Plus elle est haute, plus les révisions sont fréquentes. 90 % est un bon équilibre.
           </p>
+          <div class="row">
+            <span class="label">Notifications de révision</span>
+            <div class="segmented" role="group" aria-label="Notifications de révision">
+              <button
+                class:active={reviewNotify}
+                aria-pressed={reviewNotify}
+                onclick={() => void saveReviewNotify(true)}>Activé</button
+              >
+              <button
+                class:active={!reviewNotify}
+                aria-pressed={!reviewNotify}
+                onclick={() => void saveReviewNotify(false)}>Désactivé</button
+              >
+            </div>
+          </div>
+          <p class="hint">
+            Un rappel discret du système quand des cartes sont dues — au plus une fois par heure.
+          </p>
           {#if reviewMsg}<p class="hint err" role="alert">{reviewMsg}</p>{/if}
         </section>
         <section>
@@ -460,6 +543,42 @@
               <span><strong>Restaurer une sauvegarde</strong><small>Aperçu et confirmation avant tout</small></span>
             </button>
           </div>
+          <h3>Dossier Markdown</h3>
+          <p class="hint">
+            {#if exportDir}
+              Miroir actif vers <code>{exportDir}</code> : une note = un fichier .md,
+              les dossiers sont reproduits. Sens unique — NoteCore reste la source ;
+              les modifications faites dans ce dossier ne reviennent pas.
+            {:else}
+              Aucun dossier configuré : les notes restent uniquement dans NoteCore.
+            {/if}
+          </p>
+          <div class="actions">
+            <button class="action" onclick={() => void pickExportDir()}>
+              <Icon name="folder" size={16} />
+              <span><strong>{exportDir ? 'Changer de dossier' : 'Choisir un dossier…'}</strong><small>Copie continue des notes en .md</small></span>
+            </button>
+            {#if exportDir}
+              <button class="action" onclick={() => void disableExportDir()}>
+                <Icon name="x" size={16} />
+                <span><strong>Désactiver le miroir</strong><small>Les fichiers déjà écrits restent en place</small></span>
+              </button>
+            {/if}
+          </div>
+          {#if exportMsg}<p class="hint err" role="alert">{exportMsg}</p>{/if}
+          <h3>Mise à jour</h3>
+          <p class="hint">
+            NoteCore fonctionne entièrement hors ligne. Si une connexion est disponible,
+            une vérification peut signaler une nouvelle version — rien n'est téléchargé
+            ni installé automatiquement.
+          </p>
+          <div class="actions">
+            <button class="action" disabled={updateBusy} onclick={() => void runUpdateCheck()}>
+              <Icon name="download" size={16} />
+              <span><strong>{updateBusy ? 'Vérification…' : 'Rechercher une mise à jour'}</strong><small>Compare avec la dernière version publiée</small></span>
+            </button>
+          </div>
+          {#if updateMsg}<p class="hint" role="status">{updateMsg}</p>{/if}
         </section>
       {:else}
         <section>

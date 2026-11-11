@@ -27,7 +27,8 @@ import type {
   ReviewRating,
   ReviewSettings,
   ReviewStats,
-  SearchHit
+  SearchHit,
+  UpdateInfo
 } from './types';
 
 /**
@@ -258,6 +259,20 @@ class WailsAdapter implements NoteCoreApi {
     await this.svc.SetSetting(key, value);
   }
 
+  // --- export Markdown unidirectionnel ---
+
+  async markdownExportDir(): Promise<string> {
+    return ((await this.svc.MarkdownExportDir()) as string | null) ?? '';
+  }
+
+  async chooseMarkdownExportDir(): Promise<string> {
+    return ((await this.svc.ChooseMarkdownExportDir()) as string | null) ?? '';
+  }
+
+  async setMarkdownExportDir(dir: string): Promise<void> {
+    await this.svc.SetMarkdownExportDir(dir);
+  }
+
   // --- pièces jointes (ADR-006) ---
 
   async addAttachment(
@@ -356,6 +371,16 @@ class WailsAdapter implements NoteCoreApi {
 
   async appInfo(): Promise<AppInfo> {
     return ((await this.svc.AppInfo()) as AppInfo | null) ?? { os: '', dataDir: '', databasePath: '' };
+  }
+
+  async checkForUpdate(): Promise<UpdateInfo> {
+    return ((await this.svc.CheckForUpdate()) as UpdateInfo | null) ?? {
+      current: '',
+      latest: '',
+      available: false,
+      url: '',
+      name: ''
+    };
   }
 
   async openExternal(url: string): Promise<void> {

@@ -9,6 +9,7 @@
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import VersionHistory from './VersionHistory.svelte';
+  import NoteLinks from './NoteLinks.svelte';
   import Home from './Home.svelte';
   import Files from './Files.svelte';
   import Trash from './Trash.svelte';
@@ -30,7 +31,7 @@
   } from '../utils/editorText';
   import { editorMode, focusMode, type EditorMode } from '../stores/ui';
   import { display } from '../stores/display';
-  import { acceptSuggestion, folderTree, inboxSuggestions } from '../stores/workspace';
+  import { acceptSuggestion, folderTree, inboxSuggestions, notes, splitNoteId, splitOpen } from '../stores/workspace';
   import { pathLabel, visibleNodes } from '../utils/folders';
   import { startReview } from '../stores/review';
   import { nextClozeNumber } from '../utils/cards';
@@ -45,6 +46,7 @@
     reloadData,
     retrySave,
     saveState,
+    selectNote,
     selectedNote,
     updateSelected,
     folders
@@ -57,6 +59,7 @@
   let contentEl = $state<HTMLTextAreaElement | null>(null);
   let pendingDelete = $state(false);
   let versionsOpen = $state(false);
+  let linksOpen = $state(false);
 
   const note = $derived($selectedNote);
 
@@ -262,6 +265,18 @@
   function setMode(next: EditorMode): void {
     editorMode.set(next);
     if (next === 'preview') void flushSave();
+  }
+
+  /** Volet secondaire : une autre note en lecture à côté de l'éditeur. */
+  function toggleSplit(): void {
+    if ($splitOpen) {
+      splitNoteId.set(null);
+      return;
+    }
+    // Pré-sélection : une autre note si possible — la même des deux
+    // côtés n'apprend rien.
+    const other = $notes.find((n) => n.id !== note?.id) ?? note;
+    if (other) splitNoteId.set(other.id);
   }
 
   // --- cartes de révision (ADR-007) ---
@@ -537,6 +552,24 @@
         </button>
         <button
           class="icon-btn"
+          title="Liens de la note — [[titre]] dans le texte crée un lien vers une autre note"
+          aria-label="Liens de la note"
+          onclick={() => (linksOpen = true)}
+        >
+          <Icon name="link" size={16} />
+        </button>
+        <button
+          class="icon-btn"
+          class:on={$splitOpen}
+          aria-pressed={$splitOpen}
+          title="Volet secondaire — afficher une autre note à côté, en lecture"
+          aria-label="Afficher un second volet"
+          onclick={toggleSplit}
+        >
+          <Icon name="columns" size={16} />
+        </button>
+        <button
+          class="icon-btn"
           title="Partager cette note sans connexion (fichier ou réseau local)"
           aria-label="Partager la note"
           onclick={() => shareDialog.set({ scope: 'note', id: note?.id ?? '' })}
@@ -760,7 +793,7 @@
         {#if mode !== 'edit'}
           <div class="pane read">
             <div class="preview-holder">
-              <MarkdownPreview content={note.content} onTaskToggle={toggleTask} />
+              <MarkdownPreview content={note.content} onTaskToggle={toggleTask} onWikiLink={(id) => void selectNote(id)} />
             </div>
           </div>
         {/if}
@@ -806,6 +839,10 @@
     onclose={() => (versionsOpen = false)}
     onrestored={() => void reloadData()}
   />
+{/if}
+
+{#if linksOpen && note}
+  <NoteLinks {note} onclose={() => (linksOpen = false)} />
 {/if}
 
 {#if attachmentPendingDelete}

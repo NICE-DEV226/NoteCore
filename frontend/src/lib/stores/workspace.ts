@@ -44,6 +44,9 @@ export const trashedNotes = writable<Note[]>([]);
 export const trashOpen = writable(false);
 
 export const selectedNoteId = writable<string | null>(null);
+/** Volet secondaire (split-screen) : la note affichée en lecture seule. */
+export const splitNoteId = writable<string | null>(null);
+export const splitOpen = derived(splitNoteId, ($id) => $id !== null);
 export const currentView = writable<View>({ kind: 'all' });
 export const searchQuery = writable<string>('');
 export const saveState = writable<SaveState>('saved');
@@ -53,6 +56,10 @@ export const saveState = writable<SaveState>('saved');
 // ---------------------------------------------------------------------------
 
 export const selectedNote = derived([notes, selectedNoteId], ([$notes, $id]) =>
+  $id ? ($notes.find((n) => n.id === $id) ?? null) : null
+);
+
+export const splitNote = derived([notes, splitNoteId], ([$notes, $id]) =>
   $id ? ($notes.find((n) => n.id === $id) ?? null) : null
 );
 
@@ -486,6 +493,7 @@ export async function deleteNote(id: string): Promise<void> {
     await api.deleteNote(id);
     notes.update((list) => list.filter((n) => n.id !== id));
     if (get(selectedNoteId) === id) selectedNoteId.set(null);
+    if (get(splitNoteId) === id) splitNoteId.set(null);
     saveState.set('saved');
     void refreshTrash();
     void refreshReview();

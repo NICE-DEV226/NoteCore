@@ -1,6 +1,6 @@
 name: Release
 
-# Construit les livrables Linux et Windows. Sur une étiquette `v*`, les publie
+# Construit les livrables Linux, Windows et macOS. Sur une étiquette `v*`, les publie
 # avec leurs empreintes SHA-256 ; sinon, les garde en artefacts du workflow
 # (téléchargeables 90 jours) pour essayer une version avant de l'étiqueter.
 on:
@@ -151,9 +151,61 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  darwin:
+    name: macOS (.app universel arm64 + Intel)
+    runs-on: macos-14
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances du frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Installer Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Installer la CLI Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      # Bundle .app universel (arm64 + amd64) : un seul livrable pour
+      # Apple Silicon et Intel. Non signé — le premier lancement demande
+      # de contourner Gatekeeper (clic droit → Ouvrir), voir README.
+      - name: Compiler l'application
+        working-directory: backend
+        run: $(go env GOPATH)/bin/wails build -platform darwin/universal -clean
+
+      - name: Préparer les livrables
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="${GITHUB_REF_NAME}"
+          else TAG="v$(sed -n 's/.*"productVersion": *"\([^"]*\)".*/\1/p' backend/wails.json)"; fi
+          test -d backend/build/bin/notecore.app
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            backend/build/bin/notecore.app "dist/notecore-${TAG}-macos-universal.zip"
+          ls -lh dist
+
+      - name: Publier en artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: notecore-macos
+          path: dist/*
+          if-no-files-found: error
+
   publish:
     name: Publier le release (étiquette v*)
-    needs: [linux, windows]
+    needs: [linux, windows, darwin]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:

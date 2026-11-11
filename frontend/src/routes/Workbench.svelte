@@ -20,12 +20,16 @@
   import FolderPickerDialog from '../lib/components/FolderPickerDialog.svelte';
   import FolderTemplateDialog from '../lib/components/FolderTemplateDialog.svelte';
   import ReviewNudge from '../lib/components/ReviewNudge.svelte';
+  import SplitPane from '../lib/components/SplitPane.svelte';
   import { viewer } from '../lib/stores/files';
   import { onMount } from 'svelte';
   import { guideOpen, initGuide } from '../lib/stores/guide';
   import { reviewOpen } from '../lib/stores/review';
   import { createNote, flushSave, transferNotice } from '../lib/stores/workspace';
+  import { api } from '../lib/api/client';
   import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
+  import { splitOpen } from '../lib/stores/workspace';
+  import { updateDismissed, updateInfo, checkForUpdate } from '../lib/stores/update';
 
   /**
    * Raccourcis globaux (cahier des charges §3.6). On ne réagit qu'à Ctrl/Cmd pour ne
@@ -34,8 +38,11 @@
    * sans modificateur reste réservé au texte.
    */
   // Premier lancement : le guide s'ouvre une fois, puis reste rouvrable.
+  // La vérification de mise à jour est un appel unique et silencieux :
+  // hors ligne, elle échoue sans rien afficher.
   onMount(() => {
     void initGuide();
+    void checkForUpdate();
   });
 
   function handleShortcut(event: KeyboardEvent): void {
@@ -73,7 +80,12 @@
 <main class="workbench" class:focus={$focusMode}>
   <Sidebar />
   <NoteList />
-  <EditorPane />
+  <div class="editor-zone" class:split={$splitOpen && !$focusMode}>
+    <EditorPane />
+    {#if $splitOpen && !$focusMode}
+      <SplitPane />
+    {/if}
+  </div>
 </main>
 
 {#if $focusMode}
@@ -121,6 +133,15 @@
   <FolderPickerDialog />
 {/if}
 
+{#if $updateInfo && !$updateDismissed}
+  <div class="notice update" role="status" transition:fly={{ y: 8, duration: 150 }}>
+    <Icon name="download" size={14} />
+    <span>NoteCore {$updateInfo.latest} est disponible</span>
+    <button class="update-link" onclick={() => void api.openExternal($updateInfo!.url)}>Voir la version</button>
+    <button class="update-x" aria-label="Masquer" onclick={() => updateDismissed.set(true)}><Icon name="x" size={12} /></button>
+  </div>
+{/if}
+
 {#if $transferNotice}
   <div
     class="notice"
@@ -139,6 +160,17 @@
     grid-template-columns: 248px minmax(260px, 330px) 1fr;
     height: 100vh;
     overflow: hidden;
+  }
+
+  /* Zone d'écriture : un ou deux volets quand le split-screen est ouvert. */
+  .editor-zone {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    min-height: 0;
+  }
+  .editor-zone.split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   /* Concentration : seule la zone d'écriture reste visible. */
@@ -211,5 +243,36 @@
   }
   .notice.is-error :global(svg) {
     color: var(--danger);
+  }
+  .notice.update {
+    bottom: 3.2rem;
+  }
+  .notice.update .update-link {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--accent-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+  }
+  .notice.update .update-link:hover {
+    text-decoration: underline;
+  }
+  .notice.update .update-x {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0.15rem;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+  }
+  .notice.update .update-x:hover {
+    background: var(--hover);
+    color: var(--text);
   }
 </style>

@@ -298,3 +298,13 @@ export interface TreeResult {
   existing: number;
   rootIds: string[];
 }
+
+// --- vérification de mise à jour -------------------------------------------
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  url: string;
+  name: string;
+}

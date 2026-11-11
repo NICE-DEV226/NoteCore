@@ -126,6 +126,15 @@ function renderInline(text: string): string {
     return `${keep(`<a href="${escapeHtml(href)}" rel="noreferrer">`)}${label}${keep('</a>')}`;
   });
 
+  // liens « wiki » [[cible]] / [[cible|alias]] : la cible reste brute dans
+  // data-wikilink (l'aperçu la résout vers une note), le libellé garde le
+  // gras / italique du flux. Placé après les liens […](url) : une syntaxe
+  // de lien markdown prime.
+  out = out.replace(/\[\[([^\][|\n]+?)(?:\|([^\][\n]*?))?\]\]/g, (_m, target: string, alias?: string) => {
+    const label = (alias ?? target).trim() || target.trim();
+    return `${keep(`<a class="md-wikilink" data-wikilink="${target.trim()}" href="#">`)}${label}${keep('</a>')}`;
+  });
+
   // gras, mise en évidence, italique (imbrication permise)
   out = out.replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, '<strong>$1</strong>');
   out = out.replace(/==(?=\S)(.+?)(?<=\S)==/g, '<mark>$1</mark>');

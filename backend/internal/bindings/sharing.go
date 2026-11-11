@@ -124,6 +124,7 @@ type pendingImport struct {
 }
 
 func (n *NoteCore) runImport(data []byte, passphrase, pendingID string) (ImportResult, error) {
+	defer n.scheduleExportSync()
 	rep, err := share.Import(n.callContext(), n.svc, data, passphrase)
 	needs, wrong := errors.Is(err, share.ErrPassphraseRequired), errors.Is(err, share.ErrBadPassphrase)
 	if needs || wrong {
@@ -180,6 +181,7 @@ func (n *NoteCore) ImportFromFile() (ImportResult, error) {
 // (vault Obsidian, export Joplin) : chaque .md devient une note, les
 // sous-dossiers deviennent les dossiers NoteCore.
 func (n *NoteCore) ImportMarkdownFolder() (ImportResult, error) {
+	defer n.scheduleExportSync()
 	dir, err := wailsruntime.OpenDirectoryDialog(n.callContext(), wailsruntime.OpenDialogOptions{
 		Title: "Importer un dossier de notes Markdown",
 	})

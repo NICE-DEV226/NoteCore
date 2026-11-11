@@ -25,7 +25,8 @@ import type {
   NoteVersion,
   NoteVersionInfo,
   RestorePreview,
-  SearchHit
+  SearchHit,
+  UpdateInfo
 } from './types';
 
 /**
@@ -141,6 +142,15 @@ export interface NoteCoreApi {
   /** Enregistre (ou remplace) un réglage local. */
   setSetting(key: string, value: string): Promise<void>;
 
+  // --- export Markdown unidirectionnel ---
+
+  /** Dossier configuré pour le miroir .md ("" = désactivé). */
+  markdownExportDir(): Promise<string>;
+  /** Ouvre le dialogue système de dossier ; "" = annulé. */
+  chooseMarkdownExportDir(): Promise<string>;
+  /** Fixe ou efface ("") le dossier d'export. */
+  setMarkdownExportDir(dir: string): Promise<void>;
+
   // --- pièces jointes (ADR-006) ---
 
   /**
@@ -165,6 +175,9 @@ export interface NoteCoreApi {
 
   /** Système et dossier des données, pour le guide de prise en main. */
   appInfo(): Promise<AppInfo>;
+
+  /** Dernière version publiée (GitHub) comparée à celle-ci ; erreur = hors ligne ou API muette. */
+  checkForUpdate(): Promise<UpdateInfo>;
 
   // --- fichiers joints : parcourir, ouvrir, lire (ADR-006) ---
 
