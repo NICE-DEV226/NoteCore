@@ -8,6 +8,7 @@
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import VersionHistory from './VersionHistory.svelte';
   import Home from './Home.svelte';
   import Files from './Files.svelte';
   import Trash from './Trash.svelte';
@@ -41,6 +42,7 @@
     deleteNote,
     exportSelectedNote,
     flushSave,
+    reloadData,
     retrySave,
     saveState,
     selectedNote,
@@ -54,6 +56,7 @@
   const mode = $derived($editorMode);
   let contentEl = $state<HTMLTextAreaElement | null>(null);
   let pendingDelete = $state(false);
+  let versionsOpen = $state(false);
 
   const note = $derived($selectedNote);
 
@@ -524,7 +527,14 @@
         >
           <Icon name="focus" size={16} />
         </button>
-
+        <button
+          class="icon-btn"
+          title="Historique des versions — chaque état enregistré peut être restauré"
+          aria-label="Historique des versions"
+          onclick={() => (versionsOpen = true)}
+        >
+          <Icon name="clock" size={16} />
+        </button>
         <button
           class="icon-btn"
           title="Partager cette note sans connexion (fichier ou réseau local)"
@@ -787,6 +797,14 @@
     confirmLabel="Mettre à la corbeille"
     onconfirm={() => void onDelete()}
     oncancel={() => (pendingDelete = false)}
+  />
+{/if}
+
+{#if versionsOpen && note}
+  <VersionHistory
+    noteId={note.id}
+    onclose={() => (versionsOpen = false)}
+    onrestored={() => void reloadData()}
   />
 {/if}
 

@@ -176,6 +176,26 @@ func (n *NoteCore) ImportFromFile() (ImportResult, error) {
 	return n.runImport(data, "", "")
 }
 
+// ImportMarkdownFolder importe un dossier entier de fichiers Markdown
+// (vault Obsidian, export Joplin) : chaque .md devient une note, les
+// sous-dossiers deviennent les dossiers NoteCore.
+func (n *NoteCore) ImportMarkdownFolder() (ImportResult, error) {
+	dir, err := wailsruntime.OpenDirectoryDialog(n.callContext(), wailsruntime.OpenDialogOptions{
+		Title: "Importer un dossier de notes Markdown",
+	})
+	if err != nil {
+		return ImportResult{}, fmt.Errorf("dialog d'import : %w", err)
+	}
+	if dir == "" {
+		return ImportResult{Cancelled: true}, nil
+	}
+	rep, err := share.ImportMarkdownDir(n.callContext(), n.svc, dir)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	return ImportResult{Report: rep}, nil
+}
+
 // ImportFromURL reçoit un envoi d'un autre appareil du réseau local.
 func (n *NoteCore) ImportFromURL(rawURL string) (ImportResult, error) {
 	data, err := share.Fetch(n.callContext(), rawURL)

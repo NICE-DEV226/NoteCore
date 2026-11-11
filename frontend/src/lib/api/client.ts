@@ -20,6 +20,8 @@ import type {
   Note,
   NoteCards,
   NotePatch,
+  NoteVersion,
+  NoteVersionInfo,
   RestorePreview,
   ReviewCard,
   ReviewRating,
@@ -150,6 +152,20 @@ class WailsAdapter implements NoteCoreApi {
     return ((await this.svc.EmptyTrash()) as number | null) ?? 0;
   }
 
+  // --- historique de versions ---
+
+  async listNoteVersions(noteId: string): Promise<NoteVersionInfo[]> {
+    const raw = (await this.svc.ListNoteVersions(noteId)) as unknown[] | null;
+    return (raw ?? []) as NoteVersionInfo[];
+  }
+
+  async getNoteVersion(versionId: string): Promise<NoteVersion> {
+    return (await this.svc.GetNoteVersion(versionId)) as NoteVersion;
+  }
+
+  async restoreNoteVersion(noteId: string, versionId: string): Promise<Note> {
+    return this.toNote(await this.svc.RestoreNoteVersion(noteId, versionId));
+  }
 // FUNCTION asyncrhone for folder creation
   async createFolder(name: string, parentId?: string | null): Promise<Folder> {
     return (await this.svc.CreateFolder(name, parentId ?? '')) as Folder;
@@ -320,6 +336,10 @@ class WailsAdapter implements NoteCoreApi {
 
   async importFromFile(): Promise<ImportResult> {
     return this.toImport(await this.svc.ImportFromFile());
+  }
+
+  async importMarkdownFolder(): Promise<ImportResult> {
+    return this.toImport(await this.svc.ImportMarkdownFolder());
   }
 
   async importFromUrl(url: string): Promise<ImportResult> {

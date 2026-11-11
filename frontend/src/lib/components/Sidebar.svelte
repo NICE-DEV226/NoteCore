@@ -7,6 +7,7 @@
    */
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import NoteTemplates from './NoteTemplates.svelte';
   import Brand from './Brand.svelte';
   import { tagTint } from '../utils/tags';
   import {
@@ -52,6 +53,7 @@
   let folderPendingDelete = $state<string | null>(null);
   let editingFolderId = $state<string | null>(null);
   let folderEditName = $state('');
+  let noteTemplatesOpen = $state(false);
 
   let folderInput = $state<HTMLInputElement | null>(null);
   let folderRenameInput = $state<HTMLInputElement | null>(null);
@@ -238,6 +240,14 @@
         Aujourd'hui
       </button>
 
+      <button
+        class="new-note daily"
+        title="Créer une note à partir d'un modèle (compte rendu, TP, séance…)"
+        onclick={() => (noteTemplatesOpen = true)}
+      >
+        <Icon name="layout" size={15} />
+        Modèles
+      </button>
       <button
         class="finder"
         title="Rechercher et exécuter des commandes"
@@ -525,6 +535,10 @@
       </button>
     </div>
   {/if}
+{#if noteTemplatesOpen}
+  <NoteTemplates onclose={() => (noteTemplatesOpen = false)} />
+{/if}
+
 </aside>
 
 {#if folderPendingDelete}
