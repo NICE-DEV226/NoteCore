@@ -26,7 +26,8 @@ import type {
   NoteVersionInfo,
   RestorePreview,
   SearchHit,
-  UpdateInfo
+  UpdateInfo,
+  UpdateResult
 } from './types';
 
 /**
@@ -178,6 +179,16 @@ export interface NoteCoreApi {
 
   /** Dernière version publiée (GitHub) comparée à celle-ci ; erreur = hors ligne ou API muette. */
   checkForUpdate(): Promise<UpdateInfo>;
+
+  /**
+   * Télécharge, vérifie et installe la dernière release selon le mode
+   * d'installation détecté. Long : la progression arrive via
+   * onUpdateProgress. Redémarre l'application quand c'est possible.
+   */
+  applyUpdate(): Promise<UpdateResult>;
+
+  /** Écoute la progression du téléchargement (0-100) ; retourne la fonction d'arrêt. */
+  onUpdateProgress(listener: (percent: number) => void): () => void;
 
   // --- fichiers joints : parcourir, ouvrir, lire (ADR-006) ---
 

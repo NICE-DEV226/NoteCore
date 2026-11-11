@@ -308,3 +308,12 @@ export interface UpdateInfo {
   url: string;
   name: string;
 }
+
+/** Résultat d'une installation de mise à jour dans l'application. */
+export interface UpdateResult {
+  /** Stratégie utilisée : local, system, pacman, deb, windows, macos, manual. */
+  method: string;
+  message: string;
+  /** Vrai si l'application se ferme pour laisser place à la nouvelle version. */
+  restart: boolean;
+}

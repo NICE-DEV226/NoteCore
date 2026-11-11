@@ -874,6 +874,15 @@ export const mockApi: NoteCoreApi = {
     return { current: '0.4.0', latest: '', available: false, url: '', name: '' };
   },
 
+  async applyUpdate() {
+    await delay();
+    return { method: 'mock', message: 'Mise à jour simulée (mode navigateur).', restart: false };
+  },
+
+  onUpdateProgress() {
+    return () => {};
+  },
+
   async openExternal(url: string) {
     window.open(url, '_blank', 'noopener,noreferrer');
   },

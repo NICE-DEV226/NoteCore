@@ -28,7 +28,8 @@ import type {
   ReviewSettings,
   ReviewStats,
   SearchHit,
-  UpdateInfo
+  UpdateInfo,
+  UpdateResult
 } from './types';
 
 /**
@@ -48,7 +49,10 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   interface Window {
     go?: Record<string, any>;
-    runtime?: { BrowserOpenURL(url: string): void };
+    runtime?: {
+      BrowserOpenURL(url: string): void;
+      EventsOn?(event: string, callback: (...args: unknown[]) => void): () => void;
+    };
   }
 }
 
@@ -381,6 +385,16 @@ class WailsAdapter implements NoteCoreApi {
       url: '',
       name: ''
     };
+  }
+
+  async applyUpdate(): Promise<UpdateResult> {
+    return (await this.svc.ApplyUpdate()) as UpdateResult;
+  }
+
+  onUpdateProgress(listener: (percent: number) => void): () => void {
+    const rt = window.runtime;
+    if (!rt?.EventsOn) return () => {};
+    return rt.EventsOn('notecore:update-progress', (pct) => listener(Number(pct)));
   }
 
   async openExternal(url: string): Promise<void> {
