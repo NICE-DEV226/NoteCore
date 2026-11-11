@@ -256,19 +256,32 @@
           e.preventDefault();
           const prev = vis[visIdx - 1];
           if (prev !== undefined) {
-            nodes[prev].text = `${nodes[prev].text} ${nodes[index].text}`.trim();
+            // On fusionne les libellés visibles : le marqueur de case
+            // éventuel du nœud absorbé ne doit pas rester en clair.
+            nodes[prev].text = `${nodes[prev].text} ${taskText(nodes[index].text)}`.trim();
             nodes.splice(index, 1);
             emit();
             focusNode(prev, 'end');
           }
         }
         break;
-      case 'Delete':
+      case 'Delete': {
+        const el = e.currentTarget as HTMLInputElement;
+        const atEnd = el.selectionStart === el.value.length && el.selectionStart === el.selectionEnd;
         if (nodes[index].text === '') {
           e.preventDefault();
           removeNode(index);
+        } else if (atEnd && visIdx >= 0 && visIdx < vis.length - 1) {
+          // Fin de puce : absorber la puce suivante dans celle-ci.
+          e.preventDefault();
+          const next = vis[visIdx + 1];
+          nodes[index].text = `${nodes[index].text} ${taskText(nodes[next].text)}`.trim();
+          nodes.splice(next, 1);
+          emit();
+          focusNode(index, 'end');
         }
         break;
+      }
     }
   }
 </script>

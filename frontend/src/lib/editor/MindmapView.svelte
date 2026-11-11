@@ -184,7 +184,7 @@
         />
       {/each}
       {#each flat.nodes as p (p.node.id)}
-        <g class="node" class:done={p.state === 'done'} class:todo={p.state === 'todo'}>
+        <g class="node" class:root={p.node.depth === 0} class:done={p.state === 'done'} class:todo={p.state === 'todo'}>
           <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="8" />
           <text x={p.x + PAD_X} y={p.y + p.h / 2 + 4}>{label(p)}</text>
         </g>
@@ -236,6 +236,13 @@
   .node.done rect { stroke: var(--accent); }
   .node.done text { fill: var(--text-faint); text-decoration: line-through; }
   .node.todo rect { stroke-dasharray: 4 3; }
+  .node.root rect {
+    fill: var(--accent);
+    stroke: var(--accent);
+  }
+  .node.root text { fill: var(--surface); font-weight: 600; }
+  .node.root.done rect { fill: var(--accent-soft, var(--accent)); }
+  .node.root.done text { fill: var(--accent-text); }
   .tools {
     position: absolute;
     right: 1rem;
