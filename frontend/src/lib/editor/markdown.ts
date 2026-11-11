@@ -350,3 +350,29 @@ export function renderMarkdown(source: string): string {
   flushParagraph();
   return out.join('\n');
 }
+
+/** Rendu avec formules LaTeX : le document est découpé sur les segments
+ *  `$…$` (inline) et `$$…$$` (display), le reste passe par le moteur
+ *  habituel. Le HTML KaTeX produit est du balisage de confiance généré
+ *  localement ; une formule invalide retombe sur son source échappée. */
+export function renderMarkdownMath(
+  source: string,
+  katex: { renderToString(tex: string, opts?: Record<string, unknown>): string }
+): string {
+  const MATH_RE = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+  let out = '';
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = MATH_RE.exec(source)) !== null) {
+    out += renderMarkdown(source.slice(last, m.index));
+    const display = m[1] !== undefined;
+    const tex = (m[1] ?? m[2]).trim();
+    try {
+      out += katex.renderToString(tex, { throwOnError: false, displayMode: display });
+    } catch {
+      out += renderMarkdown(m[0]);
+    }
+    last = m.index + m[0].length;
+  }
+  return out + renderMarkdown(source.slice(last));
+}

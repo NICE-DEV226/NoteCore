@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { renderMarkdown } from './markdown';
+  import { renderMarkdown, renderMarkdownMath } from './markdown';
   import { api } from '../api/client';
+  import { display } from '../stores/display';
+  import type katex from 'katex';
 
   /** Contenu Markdown brut de la note. */
   let { content = '', onTaskToggle }: { content?: string; onTaskToggle?: (index: number) => void } = $props();
@@ -19,7 +21,21 @@
     return () => clearTimeout(timer);
   });
 
-  const html = $derived(renderMarkdown(debounced ?? content));
+  // KaTeX n'est chargé qu'à la demande (réglage « latex ») : le moteur
+  // et ses polices ne pèsent rien tant que l'option est éteinte.
+  let katexMod = $state<typeof katex | null>(null);
+  $effect(() => {
+    if (!$display.latex || katexMod) return;
+    void Promise.all([import('katex'), import('katex/dist/katex.min.css')])
+      .then(([m]) => (katexMod = m.default ?? m))
+      .catch(() => undefined);
+  });
+
+  const html = $derived.by(() => {
+    const src = debounced ?? content;
+    if (!$display.latex || !katexMod) return renderMarkdown(src);
+    return renderMarkdownMath(src, katexMod);
+  });
 
   let container = $state<HTMLElement | null>(null);
 

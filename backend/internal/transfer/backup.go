@@ -48,6 +48,7 @@ var schemaAddedTables = map[int][]string{
 	2: {"attachments"},
 	3: {"cards", "review_log"},
 	6: {"note_versions"},
+	7: {"attachments_fts"},
 }
 
 // requiredTables renvoie les tables attendues pour un schéma donné.
@@ -162,6 +163,13 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 	if err != nil {
 		return err
 	}
+	// Index FTS des pièces jointes (schéma 7) : table dérivée, copiée
+	// telle quelle ; une sauvegarde plus ancienne n'en a pas et le
+	// démarrage la reconstruit (IndexAttachmentTexts).
+	hasAttFTS, err := attachedTableExists(db, "restore_source", "attachments_fts")
+	if err != nil {
+		return err
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -179,6 +187,7 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 		`DELETE FROM review_log`,
 		`DELETE FROM cards`,
 		`DELETE FROM note_versions`,
+		`DELETE FROM attachments_fts`,
 		`DELETE FROM note_tags`,
 		`DELETE FROM tags`,
 		`DELETE FROM notes_fts`,
@@ -232,6 +241,12 @@ func RestoreBackup(db *sql.DB, currentSchemaVersion int, path string) error {
 					SELECT id, card_id, rating, reviewed_at, state, before FROM restore_source.review_log`,
 			)
 		}
+	}
+	if hasAttFTS {
+		statements = append(statements,
+			`INSERT INTO attachments_fts(filename, content, note_id, attachment_id)
+				SELECT filename, content, note_id, attachment_id FROM restore_source.attachments_fts`,
+		)
 	}
 	if hasVersions {
 		statements = append(statements,

@@ -93,7 +93,12 @@ func (s *Service) AddAttachment(ctx context.Context, noteID string, up Attachmen
 		Size:      int64(len(data)),
 		CreatedAt: now,
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Attachment{}, fmt.Errorf("démarrage pièce jointe : %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO attachments (id, note_id, filename, mime, size, data, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.NoteID, a.Filename, a.Mime, a.Size, data, a.CreatedAt); err != nil {
@@ -101,6 +106,14 @@ func (s *Service) AddAttachment(ctx context.Context, noteID string, up Attachmen
 			return Attachment{}, fmt.Errorf("note %q introuvable", noteID)
 		}
 		return Attachment{}, fmt.Errorf("enregistrement pièce jointe : %w", err)
+	}
+	// Index FTS des textes (schéma 7), dans la même transaction : un
+	// index et sa donnée ne divergent jamais.
+	if err := indexAttachmentInTx(ctx, tx, a, data); err != nil {
+		return Attachment{}, fmt.Errorf("indexation pièce jointe : %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Attachment{}, fmt.Errorf("commit pièce jointe : %w", err)
 	}
 	return a, nil
 }
@@ -151,12 +164,23 @@ func (s *Service) GetAttachmentData(ctx context.Context, id string) (AttachmentD
 
 // DeleteAttachment retire une pièce jointe précise.
 func (s *Service) DeleteAttachment(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE id = ?`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("démarrage suppression pièce jointe : %w", err)
+	}
+	defer tx.Rollback()
+	if err := unindexAttachmentInTx(ctx, tx, id); err != nil {
+		return fmt.Errorf("nettoyage index pièce jointe : %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("suppression pièce jointe : %w", err)
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return fmt.Errorf("pièce jointe %q introuvable", id)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit suppression pièce jointe : %w", err)
 	}
 	return nil
 }

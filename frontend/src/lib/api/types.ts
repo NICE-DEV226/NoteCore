@@ -51,6 +51,10 @@ export interface SearchHit {
   /** Extrait pertinent construit par le backend (snippet FTS, ADR-003). */
   excerpt: string;
   updatedAt?: string;
+  /** "attachment" : le résultat vient d'une pièce jointe texte indexée. */
+  kind?: string;
+  attachmentId?: string;
+  attachmentName?: string;
 }
 
 export interface Folder {

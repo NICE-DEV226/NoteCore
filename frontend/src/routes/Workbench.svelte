@@ -19,6 +19,7 @@
   import ImportDialog from '../lib/components/ImportDialog.svelte';
   import FolderPickerDialog from '../lib/components/FolderPickerDialog.svelte';
   import FolderTemplateDialog from '../lib/components/FolderTemplateDialog.svelte';
+  import ReviewNudge from '../lib/components/ReviewNudge.svelte';
   import { viewer } from '../lib/stores/files';
   import { onMount } from 'svelte';
   import { guideOpen, initGuide } from '../lib/stores/guide';
@@ -113,6 +114,8 @@
 {#if $templateDialog}
   <FolderTemplateDialog />
 {/if}
+
+<ReviewNudge />
 
 {#if $folderPicker}
   <FolderPickerDialog />

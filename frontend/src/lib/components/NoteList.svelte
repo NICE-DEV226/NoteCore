@@ -320,6 +320,7 @@
                   <span class="title">{note.title || 'Sans titre'}</span>
                   {#if hit}
                     <span class="excerpt">
+                      {#if hit.kind === 'attachment'}<span class="pj-badge">PJ</span>{/if}
                       {#each snippetParts(hit.excerpt) as part}{#if part.hit}<mark>{part.text}</mark
                           >{:else}{part.text}{/if}{/each}
                     </span>
@@ -551,6 +552,18 @@
     color: inherit;
     border-radius: 3px;
     padding: 0 0.1em;
+  }
+  .pj-badge {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--accent-text);
+    background: var(--accent-soft);
+    border-radius: 4px;
+    padding: 0.05rem 0.3rem;
+    margin-right: 0.35rem;
+    vertical-align: 1px;
   }
   .meta {
     display: flex;

@@ -223,6 +223,13 @@ func (n *NoteCore) RestoreNoteVersion(noteID, versionID string) (notes.Note, err
 	return n.svc.RestoreVersion(n.callContext(), noteID, versionID)
 }
 
+// IndexAttachmentTexts indexe les pièces jointes texte existantes qui
+// ne le sont pas encore (premier démarrage après la migration v7).
+// Idempotent, appelé une fois au lancement comme PurgeTrash.
+func (n *NoteCore) IndexAttachmentTexts(ctx context.Context) error {
+	return n.svc.IndexAttachmentTexts(ctx)
+}
+
 func (n *NoteCore) SearchNotes(query string) ([]notes.SearchResult, error) {
 	return n.svc.SearchNotes(n.callContext(), query)
 }

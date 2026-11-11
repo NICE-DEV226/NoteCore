@@ -62,6 +62,12 @@ type SearchResult struct {
 	Title     string `json:"title"`
 	Excerpt   string `json:"excerpt"`
 	UpdatedAt string `json:"updatedAt"`
+	// Kind vaut "attachment" quand le résultat vient de l'index FTS des
+	// pièces jointes texte : AttachmentID/Name identifient le fichier,
+	// la note hôte reste NoteID.
+	Kind           string `json:"kind,omitempty"`
+	AttachmentID   string `json:"attachmentId,omitempty"`
+	AttachmentName string `json:"attachmentName,omitempty"`
 }
 
 // Service concentre les règles métier. Il n'expose jamais de handle SQL.
@@ -161,12 +167,20 @@ func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult
 		filters.WriteString(` AND notes.is_pinned = 1`)
 	}
 
+	var attHits []SearchResult
 	var rows *sql.Rows
 	var err error
 	if f.text != "" {
 		match, ferr := ftsExpr(f.text)
 		if ferr != nil {
 			return nil, ferr
+		}
+		// Les pièces jointes texte indexées (schéma 7) ne sont cherchées
+		// que sur le texte libre : leurs résultats passent AVANT ceux des
+		// notes pour que, à note identique, l'extrait de note l'emporte.
+		attHits, err = s.searchAttachmentText(ctx, match)
+		if err != nil {
+			return nil, err
 		}
 		// Extrait par colonne (titre, contenu, étiquettes) : une correspondance
 		// qui ne porte que sur le titre ne doit pas produire un extrait de
@@ -209,7 +223,10 @@ func (s *Service) SearchNotes(ctx context.Context, query string) ([]SearchResult
 		r.Excerpt = bestSnippet(snippets)
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return append(attHits, out...), nil
 }
 
 // bestSnippet choisit l'extrait le plus parlant : celui qui contient les
@@ -456,6 +473,10 @@ func (s *Service) DeleteNoteForever(ctx context.Context, id string) error {
 	if err := unindexInTx(ctx, tx, id); err != nil {
 		return err
 	}
+	if err := unindexNoteAttachmentsInTx(ctx, tx,
+		`SELECT id FROM notes WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("nettoyage index pièces jointes : %w", err)
+	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("suppression définitive note : %w", err)
@@ -481,6 +502,10 @@ func (s *Service) EmptyTrash(ctx context.Context) (int, error) {
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM notes_fts WHERE note_id IN (SELECT id FROM notes WHERE deleted_at IS NOT NULL)`); err != nil {
 		return 0, fmt.Errorf("nettoyage index corbeille : %w", err)
+	}
+	if err := unindexNoteAttachmentsInTx(ctx, tx,
+		`SELECT id FROM notes WHERE deleted_at IS NOT NULL`); err != nil {
+		return 0, fmt.Errorf("nettoyage index pièces jointes : %w", err)
 	}
 	res, err := tx.ExecContext(ctx, `DELETE FROM notes WHERE deleted_at IS NOT NULL`)
 	if err != nil {
@@ -509,6 +534,10 @@ func (s *Service) PurgeTrash(ctx context.Context, olderThan time.Duration) (int,
 		`DELETE FROM notes_fts WHERE note_id IN (SELECT id FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?)`,
 		cutoff); err != nil {
 		return 0, fmt.Errorf("nettoyage index corbeille : %w", err)
+	}
+	if err := unindexNoteAttachmentsInTx(ctx, tx,
+		`SELECT id FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?`, cutoff); err != nil {
+		return 0, fmt.Errorf("nettoyage index pièces jointes : %w", err)
 	}
 	res, err := tx.ExecContext(ctx,
 		`DELETE FROM notes WHERE deleted_at IS NOT NULL AND deleted_at < ?`, cutoff)
