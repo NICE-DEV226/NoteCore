@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"notecore/backend/internal/notes"
 	"notecore/backend/internal/storage"
@@ -659,3 +660,82 @@ func TestRechercheOperateurs(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Historique de versions : chaque état distinct sauvegardé est conservé,
+// la liste ne duplique pas les sauvegardes identiques, et la restauration
+// est réversible (l'état remplacé redevient une version).
+func TestHistoriqueVersions(t *testing.T) {
+	svc := newService(t)
+	ctx := context.Background()
+
+	n, err := svc.CreateNote(ctx, "note versionnée", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1 := "première version du texte"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v1}); err != nil {
+		t.Fatal(err)
+	}
+	// Sauvegarde identique : pas de doublon.
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v1}); err != nil {
+		t.Fatal(err)
+	}
+	v2 := "deuxième version, plus longue"
+	if _, err := svc.UpdateNote(ctx, n.ID, notes.Patch{Content: &v2}); err != nil {
+		t.Fatal(err)
+	}
+
+	versions, err := svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// v1 et v2 ont été enregistrés ; la sauvegarde répétée de v1 non.
+	if len(versions) != 2 {
+		t.Fatalf("%d versions au lieu de 2 : %+v", len(versions), versions)
+	}
+	if versions[0].Chars != utf8.RuneCountInString(v2) {
+		t.Errorf("la version la plus récente devrait être v2 (%d car.)", utf8.RuneCountInString(v2))
+	}
+
+	// Restauration de v1 : le contenu revient, et l'état courant (v2)
+	// reste disponible dans l'historique.
+	oldest := versions[1]
+	restored, err := svc.RestoreVersion(ctx, n.ID, oldest.ID)
+	if err != nil {
+		t.Fatalf("restauration : %v", err)
+	}
+	if restored.Content != v1 {
+		t.Errorf("contenu restauré = %q, attendu %q", restored.Content, v1)
+	}
+	after, err := svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 3 {
+		t.Errorf("%d versions après restauration, 3 attendues (réversible)", len(after))
+	}
+
+	// Une version ne peut pas être restaurée dans une autre note.
+	other, err := svc.CreateNote(ctx, "autre note", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RestoreVersion(ctx, other.ID, oldest.ID); err == nil {
+		t.Error("une version a été restaurée dans une note qui n'est pas la sienne")
+	}
+
+	// La suppression définitive emporte l'historique (via la corbeille).
+	if err := svc.DeleteNote(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteNoteForever(ctx, n.ID); err != nil {
+		t.Fatal(err)
+	}
+	versions, err = svc.ListVersions(ctx, n.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 0 {
+		t.Errorf("%d versions survivent à la suppression définitive", len(versions))
+	}
+}

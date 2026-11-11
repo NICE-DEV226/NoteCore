@@ -347,6 +347,11 @@ func (s *Service) UpdateNote(ctx context.Context, id string, patch Patch) (Note,
 	if err := syncNoteTags(ctx, tx, id, n.Tags); err != nil {
 		return Note{}, err
 	}
+	if before.Title != n.Title || before.Content != n.Content {
+		if err := recordVersionInTx(ctx, tx, id, n.Title, n.Content); err != nil {
+			return Note{}, err
+		}
+	}
 	// Règle d'or : index FTS recalculé dans cette même transaction.
 	if err := reindexInTx(ctx, tx, id); err != nil {
 		return Note{}, err

@@ -40,6 +40,17 @@ interface MockAttachment {
 }
 const attachments: MockAttachment[] = [];
 
+// Historique de versions factice : chaque updateNote avec titre ou
+// contenu modifié empile une version, comme le fait le vrai backend.
+interface MockVersion {
+  id: string;
+  noteId: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+const noteVersions: MockVersion[] = [];
+
 function makeFolder(name: string, ageMinutes: number): Folder {
   return {
     id: newId('folder'),
@@ -462,9 +473,42 @@ export const mockApi: NoteCoreApi = {
     await delay();
     const idx = seed.notes.findIndex((n) => n.id === id);
     if (idx === -1) throw new Error('note introuvable');
-    seed.notes[idx] = { ...seed.notes[idx], ...patch, updatedAt: minutesAgo(0) };
+    const prev = seed.notes[idx];
+    const next = { ...prev, ...patch, updatedAt: minutesAgo(0) };
+    if ((patch.title !== undefined && patch.title !== prev.title) ||
+        (patch.content !== undefined && patch.content !== prev.content)) {
+      noteVersions.push({
+        id: newId('ver'), noteId: id,
+        title: next.title, content: next.content, createdAt: next.updatedAt,
+      });
+    }
+    seed.notes[idx] = next;
     if (patch.content !== undefined) deriveCards(id, patch.content);
     return { ...seed.notes[idx], tags: [...seed.notes[idx].tags] };
+  },
+
+  async listNoteVersions(noteId) {
+    await delay();
+    return noteVersions
+      .filter((v) => v.noteId === noteId)
+      .slice(-100)
+      .reverse()
+      .map((v) => ({ id: v.id, title: v.title, createdAt: v.createdAt, chars: v.content.length }));
+  },
+
+  async getNoteVersion(versionId) {
+    await delay();
+    const v = noteVersions.find((x) => x.id === versionId);
+    if (!v) throw new Error('version introuvable');
+    return { id: v.id, title: v.title, content: v.content, createdAt: v.createdAt, chars: v.content.length };
+  },
+
+  async restoreNoteVersion(noteId, versionId) {
+    await delay();
+    const v = noteVersions.find((x) => x.id === versionId && x.noteId === noteId);
+    if (!v) throw new Error('version introuvable');
+    const patch: NotePatch = { title: v.title, content: v.content };
+    return this.updateNote(noteId, patch);
   },
 
   async deleteNote(id) {
@@ -784,6 +828,10 @@ export const mockApi: NoteCoreApi = {
   async shareStop() {},
 
   async importFromFile() {
+    throw new Error("L'import est disponible dans l'application native.");
+  },
+
+  async importMarkdownFolder() {
     throw new Error("L'import est disponible dans l'application native.");
   },
 

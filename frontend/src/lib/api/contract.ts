@@ -22,6 +22,8 @@ import type {
   Folder,
   Note,
   NotePatch,
+  NoteVersion,
+  NoteVersionInfo,
   RestorePreview,
   SearchHit
 } from './types';
@@ -55,6 +57,15 @@ export interface NoteCoreApi {
   deleteNoteForever(id: string): Promise<void>;
   /** Vide la corbeille ; renvoie le nombre de notes détruites. */
   emptyTrash(): Promise<number>;
+
+  // --- historique de versions ---
+
+  /** États sauvegardés de la note, du plus récent au plus ancien. */
+  listNoteVersions(noteId: string): Promise<NoteVersionInfo[]>;
+  /** Contenu complet d'une version (prévisualisation). */
+  getNoteVersion(versionId: string): Promise<NoteVersion>;
+  /** Rétablit une version ; l'état courant devient lui-même une version. */
+  restoreNoteVersion(noteId: string, versionId: string): Promise<Note>;
 
   /** Crée un dossier, à la racine ou dans `parentId` (dossiers imbriqués, ADR-009). */
   createFolder(name: string, parentId?: string | null): Promise<Folder>;
@@ -171,6 +182,8 @@ export interface NoteCoreApi {
   shareStatus(): Promise<ShareStatus>;
   shareStop(): Promise<void>;
   importFromFile(): Promise<ImportResult>;
+  /** Importe un dossier entier de fichiers .md (sous-dossiers → dossiers). */
+  importMarkdownFolder(): Promise<ImportResult>;
   importFromUrl(url: string): Promise<ImportResult>;
   importPending(id: string, passphrase: string): Promise<ImportResult>;
   cancelPending(): Promise<void>;
