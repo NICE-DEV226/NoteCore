@@ -29,7 +29,7 @@
   import { api } from '../lib/api/client';
   import { focusMode, folderPicker, importOpen, paletteOpen, settingsOpen, shareDialog, templateDialog } from '../lib/stores/ui';
   import { splitNoteId, splitOpen } from '../lib/stores/workspace';
-  import { updateDismissed, updateInfo, checkForUpdate } from '../lib/stores/update';
+  import { updateApplying, updateDismissed, updateInfo, updateProgress, applyUpdate, checkForUpdate } from '../lib/stores/update';
   import { listCollapsed, sidebarCollapsed } from '../lib/stores/ui';
 
   /**
@@ -45,6 +45,15 @@
     void initGuide();
     void checkForUpdate();
   });
+
+  // Message affiché dans la bannière après une tentative d'installation
+  // qui ne redémarre pas l'application (erreur, mode manuel, Windows).
+  let applyMsg = $state('');
+
+  async function installUpdate(): Promise<void> {
+    const msg = await applyUpdate();
+    if (msg) applyMsg = msg;
+  }
 
   function handleShortcut(event: KeyboardEvent): void {
     // Échap referme le volet secondaire — le réflexe « annuler le scindage ».
@@ -155,9 +164,18 @@
 {#if $updateInfo && !$updateDismissed}
   <div class="notice update" role="status" transition:fly={{ y: 8, duration: 150 }}>
     <Icon name="download" size={14} />
-    <span>NoteCore {$updateInfo.latest} est disponible</span>
-    <button class="update-link" onclick={() => void api.openExternal($updateInfo!.url)}>Voir la version</button>
-    <button class="update-x" aria-label="Masquer" onclick={() => updateDismissed.set(true)}><Icon name="x" size={12} /></button>
+    {#if $updateApplying}
+      <span>Téléchargement et installation… {$updateProgress ?? '…'} %</span>
+    {:else if applyMsg}
+      <span>{applyMsg}</span>
+    {:else}
+      <span>NoteCore {$updateInfo.latest} est disponible</span>
+      <button class="update-link" onclick={() => void installUpdate()}>Mettre à jour</button>
+      <button class="update-link" onclick={() => void api.openExternal($updateInfo!.url)}>Notes de version</button>
+    {/if}
+    {#if !$updateApplying}
+      <button class="update-x" aria-label="Masquer" onclick={() => { updateDismissed.set(true); applyMsg = ''; }}><Icon name="x" size={12} /></button>
+    {/if}
   </div>
 {/if}
 

@@ -25,6 +25,7 @@
   import { refreshReview } from '../stores/review';
   import { openGuide } from '../stores/guide';
   import { importOpen, shareDialog } from '../stores/ui';
+  import { updateApplying, updateInfo, updateProgress, applyUpdate } from '../stores/update';
 
   let dialogEl = $state<HTMLDivElement | null>(null);
 
@@ -112,6 +113,7 @@
     updateMsg = '';
     try {
       const info = await api.checkForUpdate();
+      updateInfo.set(info.available ? info : null);
       updateMsg = info.available
         ? `NoteCore ${info.latest} est disponible — la version ${info.current} est installée.`
         : `Vous avez la dernière version (${info.current}).`;
@@ -120,6 +122,12 @@
     } finally {
       updateBusy = false;
     }
+  }
+
+  async function runUpdateInstall(): Promise<void> {
+    updateMsg = '';
+    const msg = await applyUpdate();
+    if (msg) updateMsg = msg;
   }
 
   async function disableExportDir(): Promise<void> {
@@ -569,14 +577,20 @@
           <h3>Mise à jour</h3>
           <p class="hint">
             NoteCore fonctionne entièrement hors ligne. Si une connexion est disponible,
-            une vérification peut signaler une nouvelle version — rien n'est téléchargé
-            ni installé automatiquement.
+            une vérification peut signaler une nouvelle version — le téléchargement
+            et l'installation restent à votre main, rien n'est automatique.
           </p>
           <div class="actions">
             <button class="action" disabled={updateBusy} onclick={() => void runUpdateCheck()}>
               <Icon name="download" size={16} />
               <span><strong>{updateBusy ? 'Vérification…' : 'Rechercher une mise à jour'}</strong><small>Compare avec la dernière version publiée</small></span>
             </button>
+            {#if $updateInfo}
+              <button class="action" disabled={$updateApplying} onclick={() => void runUpdateInstall()}>
+                <Icon name="upload" size={16} />
+                <span><strong>{$updateApplying ? `Installation… ${$updateProgress ?? '…'} %` : `Installer la version ${$updateInfo.latest}`}</strong><small>Télécharge, vérifie et applique — redémarrage si possible</small></span>
+              </button>
+            {/if}
           </div>
           {#if updateMsg}<p class="hint" role="status">{updateMsg}</p>{/if}
         </section>
