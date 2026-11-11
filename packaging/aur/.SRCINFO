@@ -1,6 +1,6 @@
 pkgbase = notecore
 	pkgdesc = Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs
-	pkgver = 0.5.1
+	pkgver = 0.5.2
 	pkgrel = 1
 	url = https://github.com/NICE-DEV226/NoteCore
 	arch = x86_64
@@ -14,7 +14,7 @@ pkgbase = notecore
 	optdepends = xdg-utils: ouvrir les liens dans le navigateur
 	options = !lto
 	options = !debug
-	source = notecore-0.5.1.tar.gz::https://github.com/NICE-DEV226/NoteCore/archive/refs/tags/v0.5.1.tar.gz
+	source = notecore-0.5.2.tar.gz::https://github.com/NICE-DEV226/NoteCore/archive/refs/tags/v0.5.2.tar.gz
 	sha256sums = bdd93a22b5cd257d37077900144d72a561bd5b9dc9ae54536512c9e6356a079a
 
 pkgname = notecore
