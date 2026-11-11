@@ -57,7 +57,11 @@ const more: [string, boolean][] = [
   ['trou avec indice et gras', md('{{c2::**fork**::appel}}').includes('title="Carte c2 — indice : appel"><strong>fork</strong></span>')],
   ['trou non fermé laissé tel quel', !md('{{c1::sans fin').includes('md-cloze')],
   ['trou dans du code ignoré', !md('`{{c1::x}}`').includes('md-cloze')],
-  ['pièce jointe', md('![a](attachment:abc-1)').includes('data-attachment="abc-1"')]
+  ['pièce jointe', md('![a](attachment:abc-1)').includes('data-attachment="abc-1"')],
+  ['lien wiki simple', md('Voir [[Ma note]] ici').includes('<a class="md-wikilink" data-wikilink="Ma note" href="#">Ma note</a>')],
+  ['lien wiki avec alias', md('[[Cible|texte affiché]]').includes('data-wikilink="Cible" href="#">texte affiché</a>')],
+  ['lien wiki dans du code ignoré', !md('`[[x]]`').includes('md-wikilink')],
+  ['lien wiki non fermé laissé tel quel', !md('[[sans fin').includes('md-wikilink')]
 ];
 checks.push(...more);
 

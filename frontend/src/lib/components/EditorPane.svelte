@@ -9,6 +9,7 @@
   import Icon from './Icon.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import VersionHistory from './VersionHistory.svelte';
+  import NoteLinks from './NoteLinks.svelte';
   import Home from './Home.svelte';
   import Files from './Files.svelte';
   import Trash from './Trash.svelte';
@@ -45,6 +46,7 @@
     reloadData,
     retrySave,
     saveState,
+    selectNote,
     selectedNote,
     updateSelected,
     folders
@@ -57,6 +59,7 @@
   let contentEl = $state<HTMLTextAreaElement | null>(null);
   let pendingDelete = $state(false);
   let versionsOpen = $state(false);
+  let linksOpen = $state(false);
 
   const note = $derived($selectedNote);
 
@@ -537,6 +540,14 @@
         </button>
         <button
           class="icon-btn"
+          title="Liens de la note — [[titre]] dans le texte crée un lien vers une autre note"
+          aria-label="Liens de la note"
+          onclick={() => (linksOpen = true)}
+        >
+          <Icon name="link" size={16} />
+        </button>
+        <button
+          class="icon-btn"
           title="Partager cette note sans connexion (fichier ou réseau local)"
           aria-label="Partager la note"
           onclick={() => shareDialog.set({ scope: 'note', id: note?.id ?? '' })}
@@ -760,7 +771,7 @@
         {#if mode !== 'edit'}
           <div class="pane read">
             <div class="preview-holder">
-              <MarkdownPreview content={note.content} onTaskToggle={toggleTask} />
+              <MarkdownPreview content={note.content} onTaskToggle={toggleTask} onWikiLink={(id) => void selectNote(id)} />
             </div>
           </div>
         {/if}
@@ -806,6 +817,10 @@
     onclose={() => (versionsOpen = false)}
     onrestored={() => void reloadData()}
   />
+{/if}
+
+{#if linksOpen && note}
+  <NoteLinks {note} onclose={() => (linksOpen = false)} />
 {/if}
 
 {#if attachmentPendingDelete}
