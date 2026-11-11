@@ -103,6 +103,25 @@
     }
   }
 
+  // --- vérification de mise à jour (Internet requis, jamais bloquant) ---
+  let updateMsg = $state('');
+  let updateBusy = $state(false);
+
+  async function runUpdateCheck(): Promise<void> {
+    updateBusy = true;
+    updateMsg = '';
+    try {
+      const info = await api.checkForUpdate();
+      updateMsg = info.available
+        ? `NoteCore ${info.latest} est disponible — la version ${info.current} est installée.`
+        : `Vous avez la dernière version (${info.current}).`;
+    } catch {
+      updateMsg = 'Vérification impossible : pas de connexion ou service injoignable.';
+    } finally {
+      updateBusy = false;
+    }
+  }
+
   async function disableExportDir(): Promise<void> {
     exportMsg = '';
     try {
@@ -547,6 +566,19 @@
             {/if}
           </div>
           {#if exportMsg}<p class="hint err" role="alert">{exportMsg}</p>{/if}
+          <h3>Mise à jour</h3>
+          <p class="hint">
+            NoteCore fonctionne entièrement hors ligne. Si une connexion est disponible,
+            une vérification peut signaler une nouvelle version — rien n'est téléchargé
+            ni installé automatiquement.
+          </p>
+          <div class="actions">
+            <button class="action" disabled={updateBusy} onclick={() => void runUpdateCheck()}>
+              <Icon name="download" size={16} />
+              <span><strong>{updateBusy ? 'Vérification…' : 'Rechercher une mise à jour'}</strong><small>Compare avec la dernière version publiée</small></span>
+            </button>
+          </div>
+          {#if updateMsg}<p class="hint" role="status">{updateMsg}</p>{/if}
         </section>
       {:else}
         <section>

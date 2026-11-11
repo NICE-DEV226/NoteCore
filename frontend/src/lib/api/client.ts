@@ -27,7 +27,8 @@ import type {
   ReviewRating,
   ReviewSettings,
   ReviewStats,
-  SearchHit
+  SearchHit,
+  UpdateInfo
 } from './types';
 
 /**
@@ -370,6 +371,16 @@ class WailsAdapter implements NoteCoreApi {
 
   async appInfo(): Promise<AppInfo> {
     return ((await this.svc.AppInfo()) as AppInfo | null) ?? { os: '', dataDir: '', databasePath: '' };
+  }
+
+  async checkForUpdate(): Promise<UpdateInfo> {
+    return ((await this.svc.CheckForUpdate()) as UpdateInfo | null) ?? {
+      current: '',
+      latest: '',
+      available: false,
+      url: '',
+      name: ''
+    };
   }
 
   async openExternal(url: string): Promise<void> {

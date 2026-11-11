@@ -869,6 +869,11 @@ export const mockApi: NoteCoreApi = {
     return { os: 'linux', dataDir: '~/.config/NoteCore', databasePath: '~/.config/NoteCore/notecore.db' };
   },
 
+  async checkForUpdate() {
+    await delay();
+    return { current: '0.4.0', latest: '', available: false, url: '', name: '' };
+  },
+
   async openExternal(url: string) {
     window.open(url, '_blank', 'noopener,noreferrer');
   },

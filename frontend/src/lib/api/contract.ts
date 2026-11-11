@@ -25,7 +25,8 @@ import type {
   NoteVersion,
   NoteVersionInfo,
   RestorePreview,
-  SearchHit
+  SearchHit,
+  UpdateInfo
 } from './types';
 
 /**
@@ -174,6 +175,9 @@ export interface NoteCoreApi {
 
   /** Système et dossier des données, pour le guide de prise en main. */
   appInfo(): Promise<AppInfo>;
+
+  /** Dernière version publiée (GitHub) comparée à celle-ci ; erreur = hors ligne ou API muette. */
+  checkForUpdate(): Promise<UpdateInfo>;
 
   // --- fichiers joints : parcourir, ouvrir, lire (ADR-006) ---
 
