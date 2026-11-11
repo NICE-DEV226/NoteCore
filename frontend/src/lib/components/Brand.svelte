@@ -8,7 +8,8 @@
 </script>
 
 <span class="brand" class:stacked style:--size="{size}px">
-  <svg class="mark" viewBox="160 171 211 229" role="img" aria-label="NoteCore">
+  <span class="mark-tile">
+    <svg class="mark" viewBox="160 171 211 229" role="img" aria-label="NoteCore">
     <g transform="translate(0,572) scale(0.1,-0.1)" fill="currentColor" stroke="none">
       <path d="M2195 3899 c-55 -33 -200 -116 -322 -186 l-223 -128 0 -716 0 -716
 141 -114 c78 -63 176 -142 218 -176 l76 -62 30 18 c16 10 123 73 237 141 114
@@ -27,7 +28,8 @@ c50 -33 107 -73 128 -89 l37 -30 0 -177 c0 -157 -2 -180 -17 -193 -19 -16
 148 93 150 97 6 10 4 11 119 -65z" />
       <path d="M2520 2865 l0 -135 130 0 130 0 0 135 0 135 -130 0 -130 0 0 -135z" />
     </g>
-  </svg>
+    </svg>
+  </span>
   <span class="name" aria-hidden="true">Note<span class="core">Core</span></span>
 </span>
 
@@ -42,12 +44,24 @@ c50 -33 107 -73 128 -89 l37 -30 0 -177 c0 -157 -2 -180 -17 -193 -19 -16
     flex-direction: column;
     gap: calc(var(--size) * 0.28);
   }
-  /* Le symbole prend la couleur du texte : il suit les deux thèmes. */
-  .mark {
-    display: block;
-    width: calc(var(--size) * 0.92);
+  /* Le symbole pose sur une tuile de la couleur de l'accent : il se lit
+     comme une icône d'application et ne dépend plus de la couleur du texte
+     (le trait noir « flottant » était illisible en barre latérale). */
+  .mark-tile {
+    display: grid;
+    place-items: center;
+    width: var(--size);
     height: var(--size);
     flex-shrink: 0;
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--size) * 0.26);
+    color: var(--accent-text);
+  }
+  .mark {
+    display: block;
+    width: 68%;
+    height: 68%;
   }
   .name {
     font-family: var(--font-ui);

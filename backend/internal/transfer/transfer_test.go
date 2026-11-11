@@ -223,7 +223,6 @@ func TestBackupEtValidation(t *testing.T) {
 	}
 
 	// Corruption d'un octet : la validation doit détecter l'anomalie.
-	corrupted := filepath.Join(t.TempDir(), "corrompu.notecore.zip")
 	raw, err := os.ReadFile(dest)
 	if err != nil {
 		t.Fatal(err)
@@ -236,25 +235,41 @@ func TestBackupEtValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var target int64 = -1
+	var start, size int64 = -1, 0
 	for _, f := range zr.File {
 		if f.Name == "notecore.db" {
 			offset, err := f.DataOffset()
 			if err != nil {
 				t.Fatal(err)
 			}
-			target = offset + int64(f.CompressedSize64)/2
+			start, size = offset, int64(f.CompressedSize64)
 		}
 	}
 	zr.Close()
-	if target < 0 {
+	if start < 0 {
 		t.Fatal("base absente de l'archive")
 	}
-	raw[target] ^= 0xFF
-	if err := os.WriteFile(corrupted, raw, 0o600); err != nil {
-		t.Fatal(err)
+	// Un seul offset n'est pas fiable : dans un flux déflaté, certains
+	// octets peuvent être inversés sans changer les données décompressées
+	// (le test était intermittent). On essaie plusieurs positions bien
+	// réparties : une archive altérée doit être refusée au moins une fois.
+	detected := false
+	for _, frac := range []int64{1, 3, 5, 7, 9} {
+		target := start + size*frac/10
+		if target <= start || target >= start+size {
+			continue
+		}
+		raw[target] ^= 0xFF
+		corrupted := filepath.Join(t.TempDir(), "corrompu.notecore.zip")
+		if err := os.WriteFile(corrupted, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ValidateBackup(corrupted); err != nil {
+			detected = true
+		}
+		raw[target] ^= 0xFF // restaure pour l'offset suivant
 	}
-	if _, err := ValidateBackup(corrupted); err == nil {
+	if !detected {
 		t.Error("corruption non détectée par l'empreinte SHA-256")
 	}
 }
