@@ -22,9 +22,11 @@
     selectedIds,
     createNote,
     currentView,
+    favoritesCount,
     filteredNotes,
     folders,
     hasAnyNote,
+    inboxCount,
     remoteSearchHits,
     searchPending,
     searchQuery,
@@ -32,6 +34,18 @@
     selectedNoteId,
     togglePin
   } from '../stores/workspace';
+
+  /** Filtres de la zone Notes : autrefois des entrées de sidebar. */
+  const NOTE_FILTERS = [
+    { kind: 'all', label: 'Toutes' },
+    { kind: 'recent', label: 'Récentes' },
+    { kind: 'favorites', label: 'Favoris' },
+    { kind: 'inbox', label: 'À classer' }
+  ] as const;
+
+  function setFilter(kind: (typeof NOTE_FILTERS)[number]['kind']): void {
+    currentView.set({ kind });
+  }
 
   /** Titre lisible de la vue active (en-tête de section de la liste). */
   const viewTitle = derived([currentView, folders], ([$view, $folders]) => {
@@ -255,6 +269,25 @@
     </button>
   </header>
 
+  <div class="filters" role="tablist" aria-label="Filtrer les notes">
+    {#each NOTE_FILTERS as f (f.kind)}
+      <button
+        role="tab"
+        aria-selected={$currentView.kind === f.kind}
+        class="filter"
+        class:active={$currentView.kind === f.kind}
+        onclick={() => setFilter(f.kind)}
+      >
+        {f.label}
+        {#if f.kind === 'favorites' && $favoritesCount > 0}
+          <span class="filter-count">{$favoritesCount}</span>
+        {:else if f.kind === 'inbox' && $inboxCount > 0}
+          <span class="filter-count todo">{$inboxCount}</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+
   <div class="search">
     <Icon name="search" size={14} />
     <input
@@ -459,6 +492,50 @@
   .add:hover {
     background: var(--accent);
     color: var(--on-accent);
+  }
+
+  .filters {
+    display: flex;
+    gap: 2px;
+    padding: 0 0.5rem 0.45rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: 1;
+    height: 26px;
+    padding: 0 0.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-faint);
+    font: inherit;
+    font-size: 0.76rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s var(--ease), color 0.12s var(--ease);
+  }
+  .filter:hover {
+    background: var(--hover);
+    color: var(--text-soft);
+  }
+  .filter.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  .filter-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-faint);
+  }
+  .filter-count.todo {
+    color: var(--accent-text);
+  }
+  .filter.active .filter-count {
+    color: var(--accent-text);
   }
 
   .search {
