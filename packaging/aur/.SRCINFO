@@ -1,6 +1,6 @@
 pkgbase = notecore
 	pkgdesc = Prise de notes Markdown structurée, hors ligne, pour étudiants et développeurs
-	pkgver = 0.5.2
+	pkgver = 0.6.0
 	pkgrel = 1
 	url = https://github.com/NICE-DEV226/NoteCore
 	arch = x86_64
