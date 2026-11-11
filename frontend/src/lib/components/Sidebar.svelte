@@ -38,7 +38,7 @@
     trashOpen,
     trashedNotes
   } from '../stores/workspace';
-  import { dragging, folderPicker, paletteOpen, settingsOpen, templateDialog } from '../stores/ui';
+  import { dragging, folderPicker, paletteOpen, settingsOpen, sidebarCollapsed, templateDialog } from '../stores/ui';
   import { canDropFolder, subtreeIds, visibleNodes } from '../utils/folders';
   import { reviewStats, startReview } from '../stores/review';
   import { filesOpen } from '../stores/files';
@@ -213,11 +213,59 @@
 </script>
 
 <aside class="sidebar">
+  {#if $sidebarCollapsed}
+    <!-- Rail : les actions essentielles restent à portée, le reste de
+         l'espace revient à l'éditeur. Ctrl+B ou le chevron réaffiche. -->
+    <div class="rail">
+      <button
+        class="rail-btn"
+        title="Déplier la barre latérale — Ctrl+B"
+        aria-label="Déplier la barre latérale"
+        onclick={() => sidebarCollapsed.set(false)}
+      >
+        <Icon name="chevron-right" size={16} />
+      </button>
+      <button
+        class="rail-btn"
+        title="Nouvelle note — Ctrl+N"
+        aria-label="Nouvelle note"
+        onclick={() => void createNote($currentView.kind === 'folder' ? $currentView.folderId : null)}
+      >
+        <Icon name="plus" size={16} stroke={2.2} />
+      </button>
+      <button class="rail-btn" title="Rechercher — Ctrl+K" aria-label="Rechercher" onclick={() => paletteOpen.set(true)}>
+        <Icon name="search" size={16} />
+      </button>
+      <button class="rail-btn" title="Réviser les cartes dues" aria-label="Réviser" onclick={() => void startReview()}>
+        <Icon name="layers" size={16} />
+      </button>
+      <span class="rail-gap"></span>
+      <button class="rail-btn" title="Paramètres — Ctrl+," aria-label="Paramètres" onclick={() => settingsOpen.set(true)}>
+        <Icon name="settings" size={16} />
+      </button>
+      <button
+        class="rail-btn"
+        title={$theme.theme === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre'}
+        aria-label="Basculer le thème"
+        onclick={toggleTheme}
+      >
+        <Icon name={$theme.theme === 'dark' ? 'sun' : 'moon'} size={16} />
+      </button>
+    </div>
+  {:else}
   {#if !$loaded}
     <div class="loading">Chargement…</div>
   {:else}
     <div class="brand">
       <Brand size={30} />
+      <button
+        class="collapse"
+        title="Replier la barre latérale — Ctrl+B"
+        aria-label="Replier la barre latérale"
+        onclick={() => sidebarCollapsed.set(true)}
+      >
+        <Icon name="chevron-left" size={15} />
+      </button>
     </div>
 
     <div class="top">
@@ -535,6 +583,7 @@
       </button>
     </div>
   {/if}
+  {/if}
 {#if noteTemplatesOpen}
   <NoteTemplates onclose={() => (noteTemplatesOpen = false)} />
 {/if}
@@ -577,7 +626,56 @@
   }
 
   .brand {
-    padding: 1.1rem 1.1rem 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 0.8rem 0.7rem 1.1rem;
+  }
+  .collapse {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    padding: 0.3rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .collapse:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+
+  /* Rail replié : colonne d'icônes, mêmes actions essentielles. */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.7rem 0.3rem;
+    flex: 1;
+    min-height: 0;
+  }
+  .rail-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-soft);
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .rail-btn:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .rail-gap {
+    flex: 1;
   }
   .top {
     display: grid;

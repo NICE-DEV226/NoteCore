@@ -562,7 +562,7 @@
           class="icon-btn"
           class:on={$splitOpen}
           aria-pressed={$splitOpen}
-          title="Volet secondaire — afficher une autre note à côté, en lecture"
+          title="Volet secondaire — afficher une autre note à côté, en lecture (Échap pour fermer)"
           aria-label="Afficher un second volet"
           onclick={toggleSplit}
         >
@@ -920,7 +920,10 @@
   .right {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 0.25rem;
+    row-gap: 0.3rem;
   }
   .segmented {
     display: inline-flex;
