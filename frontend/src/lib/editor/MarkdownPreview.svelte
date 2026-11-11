@@ -2,10 +2,20 @@
   import { renderMarkdown, renderMarkdownMath } from './markdown';
   import { api } from '../api/client';
   import { display } from '../stores/display';
+  import { notes } from '../stores/workspace';
+  import { resolveNoteByTitle } from '../wiki';
+  import type { Note } from '../api/types';
   import type katex from 'katex';
 
   /** Contenu Markdown brut de la note. */
-  let { content = '', onTaskToggle }: { content?: string; onTaskToggle?: (index: number) => void } = $props();
+  let { content = '', onTaskToggle, onWikiLink }: { content?: string; onTaskToggle?: (index: number) => void; onWikiLink?: (noteId: string) => void } = $props();
+
+  // Notes actives pour la résolution des liens [[…]] : le store les
+  // contient toutes, aucune requête n'est nécessaire.
+  let allNotes = $state<Note[]>([]);
+  $effect(() => {
+    allNotes = $notes;
+  });
 
   // Le rendu reparse tout le document : on attend une courte pause de
   // frappe avant de relancer le moteur, pour que l'aperçu suive sans
@@ -44,6 +54,17 @@
    *  l'index de la case au composant. */
   function onPreviewClick(e: MouseEvent): void {
     const t = e.target as HTMLElement;
+
+    // Lien « wiki » [[…]] : résolution par titre, puis ouverture de la note.
+    const wiki = t.closest<HTMLAnchorElement>('a.md-wikilink');
+    if (wiki) {
+      e.preventDefault();
+      const target = wiki.dataset.wikilink ?? '';
+      const note = resolveNoteByTitle(target, allNotes);
+      if (note) onWikiLink?.(note.id);
+      return;
+    }
+
     const input =
       t.closest<HTMLInputElement>('input.md-task') ??
       t.closest('label.md-task')?.querySelector<HTMLInputElement>('input.md-task');
@@ -78,12 +99,14 @@
   }
 
   // Après chaque rendu : on numérote les cases à cocher dans l'ordre
-  // d'apparition (l'index sert à retrouver la ligne source à basculer)
-  // et on résout les images de pièces jointes depuis le backend (les
-  // octets ne sont pas dans le Markdown). Une pièce jointe n'est rendue
-  // en image que si son type est bien `image/*` (ADR-006).
+  // d'apparition (l'index sert à retrouver la ligne source à basculer),
+  // on marque les liens [[…]] résolus ou morts, et on résout les images
+  // de pièces jointes depuis le backend (les octets ne sont pas dans le
+  // Markdown). Une pièce jointe n'est rendue en image que si son type
+  // est bien `image/*` (ADR-006).
   $effect(() => {
     void html; // rejouer quand le rendu change
+    void allNotes; // et quand la liste des notes change (liens [[…]])
     const root = container;
     if (!root) return;
 
@@ -93,6 +116,20 @@
     root.querySelectorAll<HTMLInputElement>('input.md-task').forEach((input, i) => {
       input.disabled = false;
       input.dataset.task = String(i);
+    });
+
+    // Liens [[…]] : marque les cibles introuvables (style « lien mort »)
+    // et mémorise la note résolue pour le survol.
+    root.querySelectorAll<HTMLAnchorElement>('a.md-wikilink').forEach((a) => {
+      const note = resolveNoteByTitle(a.dataset.wikilink ?? '', allNotes);
+      a.classList.toggle('md-wikilink-missing', !note);
+      if (note) {
+        a.dataset.noteId = note.id;
+        a.title = note.title;
+      } else {
+        delete a.dataset.noteId;
+        a.title = 'Aucune note ne porte ce titre';
+      }
     });
 
     root.querySelectorAll<HTMLImageElement>('img[data-attachment]').forEach((img) => {
@@ -233,6 +270,18 @@
 
   .md-preview :global(a) {
     color: var(--accent-text);
+  }
+
+  /* Lien « wiki » [[note]] : souligné pointillé comme une référence ;
+     la cible introuvable est estompée et pointillée. */
+  .md-preview :global(a.md-wikilink) {
+    text-decoration-style: dotted;
+    text-underline-offset: 0.18em;
+    cursor: pointer;
+  }
+  .md-preview :global(a.md-wikilink-missing) {
+    color: var(--text-faint);
+    text-decoration-style: dashed;
   }
 
   .md-preview :global(img.md-image) {
